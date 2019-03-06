@@ -1,17 +1,14 @@
-package fileTransferring
-
-// TFTP Implementation of packet types
-// RFC-1350
+// TFTP Implementation of packet types (RFC-1350)
+package shared
 
 // Each packet includes fields including zero byte values
 // so it is easier to understand what is going on as
-// certain files are chained together to create a packet
-
+// certain fields are chained together to create a packet
 type RRQWRQPacket struct {
 	Opcode   [2] byte // 01/02
 	Filename string
 	Zero     byte
-	Mode     string
+	Mode     string // octet only for assignment
 	ZeroTwo  byte
 }
 
@@ -41,6 +38,8 @@ func CreateRRQWRQPacket(isRRQ bool) *RRQWRQPacket {
 	} else {
 		z.Opcode = [2]byte{0, 2}
 	}
+
+	z.Mode = "octet"
 
 	return &z
 }
