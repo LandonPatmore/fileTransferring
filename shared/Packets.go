@@ -5,41 +5,41 @@ package shared
 // so it is easier to understand what is going on as
 // certain fields are chained together to create a packet
 type RRQWRQPacket struct {
-	Opcode   [] byte // 01/02
+	opcode   [] byte // 01/02
 	Filename string
-	Zero     byte
-	Mode     string // octet only for assignment
-	ZeroTwo  byte
+	zero     byte
+	mode     string // octet only for assignment
+	zeroTwo  byte
 }
 
 type DataPacket struct {
-	Opcode      [] byte // 03
+	opcode      [] byte // 03
 	BlockNumber [] byte
 	Data        [] byte
 }
 
 type ACKPacket struct {
-	Opcode      [] byte //04
+	opcode      [] byte //04
 	BlockNumber [] byte
 }
 
 type ErrorPacket struct {
-	Opcode       [] byte //05
+	opcode       [] byte //05
 	ErrorCode    [] byte
 	ErrorMessage string
-	Zero         byte
+	zero         byte
 }
 
 func CreateRRQWRQPacket(isRRQ bool) *RRQWRQPacket {
 	var z RRQWRQPacket
 
 	if isRRQ {
-		z.Opcode = []byte{0, 1}
+		z.opcode = []byte{0, 1}
 	} else {
-		z.Opcode = []byte{0, 2}
+		z.opcode = []byte{0, 2}
 	}
 
-	z.Mode = "octet"
+	z.mode = "octet"
 
 	return &z
 }
@@ -47,7 +47,7 @@ func CreateRRQWRQPacket(isRRQ bool) *RRQWRQPacket {
 func CreateDataPacket() *DataPacket {
 	var d DataPacket
 
-	d.Opcode = []byte{0, 3}
+	d.opcode = []byte{0, 3}
 	d.Data = make([]byte, 0, 512)
 
 	return &d
@@ -56,7 +56,7 @@ func CreateDataPacket() *DataPacket {
 func CreateACKPacket() *ACKPacket {
 	var a ACKPacket
 
-	a.Opcode = []byte{0, 4}
+	a.opcode = []byte{0, 4}
 
 	return &a
 }
@@ -64,7 +64,49 @@ func CreateACKPacket() *ACKPacket {
 func CreateErrorPacket() *ErrorPacket {
 	var e ErrorPacket
 
-	e.Opcode = []byte{0, 5}
+	e.opcode = []byte{0, 5}
 
 	return &e
+}
+
+func CreateRRQWRQPacketByteArray(z *RRQWRQPacket) [] byte {
+	var byteArray []byte
+
+	byteArray = append(byteArray, z.opcode...)
+	byteArray = append(byteArray, z.Filename...)
+	byteArray = append(byteArray, z.zero)
+	byteArray = append(byteArray, z.mode...)
+	byteArray = append(byteArray, z.zeroTwo)
+
+	return byteArray
+}
+
+func CreateDataPacketByteArray(d *DataPacket) [] byte {
+	var byteArray []byte
+
+	byteArray = append(byteArray, d.opcode...)
+	byteArray = append(byteArray, d.BlockNumber...)
+	byteArray = append(byteArray, d.Data...)
+
+	return byteArray
+}
+
+func CreateAckPacketByteArray(a *ACKPacket) [] byte {
+	var byteArray []byte
+
+	byteArray = append(byteArray, a.opcode...)
+	byteArray = append(byteArray, a.BlockNumber...)
+
+	return byteArray
+}
+
+func CreateErrorPacketByteArray(e *ErrorPacket) [] byte {
+	var byteArray []byte
+
+	byteArray = append(byteArray, e.opcode...)
+	byteArray = append(byteArray, e.ErrorCode...)
+	byteArray = append(byteArray, e.ErrorMessage...)
+	byteArray = append(byteArray, e.zero)
+
+	return byteArray
 }

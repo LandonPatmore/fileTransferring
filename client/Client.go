@@ -17,7 +17,7 @@ func main() {
 	//
 	//conn, connError := net.Dial("udp", serverAddress+":8274")
 	//shared.ErrorValidation(connError)
-	//
+
 	//var filePath = "/Users/landon/Desktop/WarThunder-Helper/index.html"
 	////fmt.Print("Enter full file path: ")
 	////_, _ = fmt.Scanf("%s", &filePath)
@@ -25,12 +25,8 @@ func main() {
 	//file, fileError := os.Open(filePath)
 	//shared.ErrorValidation(fileError)
 	//
-	//readFile(conn, file)
-
-	var currentPacket int
-	for i := 0; i < 512; i++ {
-		fmt.Println(createBlockNumber(&currentPacket))
-	}
+	//readFile(nil, file)
+	sendWRQPacket(nil, "Test.txt")
 }
 
 func readFile(conn net.Conn, file *os.File) {
@@ -40,35 +36,48 @@ func readFile(conn net.Conn, file *os.File) {
 	var currentPacket int
 	for scanner.Scan() {
 		for _, character := range scanner.Bytes() {
-			addToArray(conn, &message, character, createBlockNumber(&currentPacket))
+			addToArray(conn, &message, character, &currentPacket)
 		}
-		addToArray(conn, &message, '\n', createBlockNumber(&currentPacket))
+		addToArray(conn, &message, '\n', &currentPacket)
 	}
-	sendDataPacket(conn, &message, createBlockNumber(&currentPacket))
+	sendDataPacket(conn, &message, &currentPacket)
 }
 
-func addToArray(conn net.Conn, message *[] byte, nextByteToAppend byte, blockNumber [] byte) {
+func addToArray(conn net.Conn, message *[] byte, nextByteToAppend byte, currentPacket *int) {
 	if checkMessageLength(message) {
-		sendDataPacket(conn, message, blockNumber)
+		sendDataPacket(conn, message, currentPacket)
+		*message = make([]byte, 0, 512)
 	}
 	*message = append(*message, nextByteToAppend)
 }
 
 func checkMessageLength(message *[] byte) bool {
 	if len(*message) == 512 {
-		fmt.Println("Packet can be sent!")
-		*message = make([]byte, 0, 512)
 		return true
 	}
 
 	return false
 }
 
-func sendDataPacket(conn net.Conn, data *[] byte, blockNumber [] byte) {
-	var dataPacket = shared.CreateDataPacket()
-	dataPacket.BlockNumber = blockNumber
+func sendWRQPacket(conn net.Conn, fileName string) {
+	wPacket := shared.CreateRRQWRQPacket(false)
+	wPacket.Filename = fileName
+
+	packet := shared.CreateRRQWRQPacketByteArray(wPacket)
+	
+	fmt.Println(packet)
+	fmt.Println()
+}
+
+func sendDataPacket(conn net.Conn, data *[] byte, currentPacket *int) {
+	dataPacket := shared.CreateDataPacket()
+	dataPacket.BlockNumber = createBlockNumber(currentPacket)
 	dataPacket.Data = *data
-	// Send data
+
+	packet := shared.CreateDataPacketByteArray(dataPacket)
+
+	fmt.Println(packet)
+	fmt.Println()
 }
 
 func createBlockNumber(currentPacketNumber *int) [] byte {
