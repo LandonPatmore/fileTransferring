@@ -4,6 +4,7 @@ import (
 	"fileTransferring/shared"
 	"fmt"
 	"net"
+	"time"
 )
 
 func main() {
@@ -17,4 +18,6 @@ func main() {
 	message := make([]byte, 1024)
 
 	fmt.Println("Server started...")
+
+	time.After()
 }

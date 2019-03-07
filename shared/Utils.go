@@ -13,6 +13,7 @@ func ErrorValidation(err error) {
 	}
 }
 
+// Interprets command line arguments for the program
 func InterpretCommandLineArguments(args [] string) (bool, bool, bool) {
 	var ipv6 bool
 	var slidingWindow bool

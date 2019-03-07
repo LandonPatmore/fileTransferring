@@ -5,7 +5,7 @@ package shared
 // so it is easier to understand what is going on as
 // certain fields are chained together to create a packet
 type RRQWRQPacket struct {
-	Opcode   [2] byte // 01/02
+	Opcode   [] byte // 01/02
 	Filename string
 	Zero     byte
 	Mode     string // octet only for assignment
@@ -13,19 +13,19 @@ type RRQWRQPacket struct {
 }
 
 type DataPacket struct {
-	Opcode      [2] byte // 03
-	BlockNumber [2] byte
-	Data        [512] byte
+	Opcode      [] byte // 03
+	BlockNumber [] byte
+	Data        [] byte
 }
 
 type ACKPacket struct {
-	Opcode      [2] byte //04
-	BlockNumber [2] byte
+	Opcode      [] byte //04
+	BlockNumber [] byte
 }
 
 type ErrorPacket struct {
-	Opcode       [2] byte //05
-	ErrorCode    [2] byte
+	Opcode       [] byte //05
+	ErrorCode    [] byte
 	ErrorMessage string
 	Zero         byte
 }
@@ -34,9 +34,9 @@ func CreateRRQWRQPacket(isRRQ bool) *RRQWRQPacket {
 	var z RRQWRQPacket
 
 	if isRRQ {
-		z.Opcode = [2]byte{0, 1}
+		z.Opcode = []byte{0, 1}
 	} else {
-		z.Opcode = [2]byte{0, 2}
+		z.Opcode = []byte{0, 2}
 	}
 
 	z.Mode = "octet"
@@ -47,7 +47,8 @@ func CreateRRQWRQPacket(isRRQ bool) *RRQWRQPacket {
 func CreateDataPacket() *DataPacket {
 	var d DataPacket
 
-	d.Opcode = [2]byte{0, 3}
+	d.Opcode = []byte{0, 3}
+	d.Data = make([]byte, 0, 512)
 
 	return &d
 }
@@ -55,7 +56,7 @@ func CreateDataPacket() *DataPacket {
 func CreateACKPacket() *ACKPacket {
 	var a ACKPacket
 
-	a.Opcode = [2]byte{0, 4}
+	a.Opcode = []byte{0, 4}
 
 	return &a
 }
@@ -63,7 +64,7 @@ func CreateACKPacket() *ACKPacket {
 func CreateErrorPacket() *ErrorPacket {
 	var e ErrorPacket
 
-	e.Opcode = [2]byte{0, 5}
+	e.Opcode = []byte{0, 5}
 
 	return &e
 }
