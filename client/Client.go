@@ -18,15 +18,15 @@ func main() {
 	//conn, connError := net.Dial("udp", serverAddress+":8274")
 	//shared.ErrorValidation(connError)
 
-	//var filePath = "/Users/landon/Desktop/WarThunder-Helper/index.html"
-	////fmt.Print("Enter full file path: ")
-	////_, _ = fmt.Scanf("%s", &filePath)
-	//
-	//file, fileError := os.Open(filePath)
-	//shared.ErrorValidation(fileError)
-	//
-	//readFile(nil, file)
-	sendWRQPacket(nil, "Test.txt")
+	var filePath = "/Users/landon/Desktop/WarThunder-Helper/index.html"
+	//fmt.Print("Enter full file path: ")
+	//_, _ = fmt.Scanf("%s", &filePath)
+
+	file, fileError := os.Open(filePath)
+	shared.ErrorValidation(fileError)
+
+	readFile(nil, file)
+	//sendWRQPacket(nil, "Test.txt")
 }
 
 func readFile(conn net.Conn, file *os.File) {
@@ -63,10 +63,7 @@ func sendWRQPacket(conn net.Conn, fileName string) {
 	wPacket := shared.CreateRRQWRQPacket(false)
 	wPacket.Filename = fileName
 
-	packet := shared.CreateRRQWRQPacketByteArray(wPacket)
-	
-	fmt.Println(packet)
-	fmt.Println()
+	fmt.Println(wPacket)
 }
 
 func sendDataPacket(conn net.Conn, data *[] byte, currentPacket *int) {
@@ -74,10 +71,7 @@ func sendDataPacket(conn net.Conn, data *[] byte, currentPacket *int) {
 	dataPacket.BlockNumber = createBlockNumber(currentPacket)
 	dataPacket.Data = *data
 
-	packet := shared.CreateDataPacketByteArray(dataPacket)
-
-	fmt.Println(packet)
-	fmt.Println()
+	fmt.Println(dataPacket)
 }
 
 func createBlockNumber(currentPacketNumber *int) [] byte {
