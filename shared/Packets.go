@@ -27,7 +27,7 @@ type ACKPacket struct {
 
 type ErrorPacket struct {
 	Opcode       [] byte //05
-	ErrorCode    [] byte
+	ErrorCode    [] byte //00 - 07
 	ErrorMessage string
 	zero         byte
 }
@@ -114,6 +114,7 @@ func CreateErrorPacketByteArray(e *ErrorPacket) [] byte {
 }
 
 func ReadRRQWRQPacket(data []byte) (p *RRQWRQPacket, err error) {
+	// TODO: Figure out where to throw error packet here instead of error
 	packet := RRQWRQPacket{}
 
 	packet.Opcode = data[:2]
@@ -136,11 +137,31 @@ func ReadRRQWRQPacket(data []byte) (p *RRQWRQPacket, err error) {
 }
 
 func ReadDataPacket(data []byte) (d *DataPacket, err error) {
+	// TODO: Figure out where to throw error packet here
 	packet := DataPacket{}
 
 	packet.Opcode = data[:2]
 	packet.BlockNumber = data[2:4]
 	packet.Data = data[4:]
+
+	return &packet, nil
+}
+
+func ReadACKPacket(data []byte) (a *ACKPacket, err error) {
+	packet := ACKPacket{}
+
+	packet.Opcode = data[:2]
+	packet.BlockNumber = data[2:]
+
+	return &packet, nil
+}
+
+func ReadErrorPacket(data []byte) (e *ErrorPacket, err error) {
+	packet := ErrorPacket{}
+
+	packet.Opcode = data[:2]
+	packet.ErrorCode = data[2:4]
+	packet.ErrorMessage = string(data[4:len(data) - 1])
 
 	return &packet, nil
 }

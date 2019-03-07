@@ -26,7 +26,6 @@ func main() {
 	shared.ErrorValidation(fileError)
 
 	readFile(nil, file)
-	//sendWRQPacket(nil, "Test.txt")
 }
 
 func readFile(conn net.Conn, file *os.File) {
