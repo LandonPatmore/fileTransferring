@@ -4,7 +4,6 @@ import (
 	"fileTransferring/shared"
 	"fmt"
 	"net"
-	"time"
 )
 
 func main() {
@@ -19,5 +18,9 @@ func main() {
 
 	fmt.Println("Server started...")
 
-	time.After()
+	for {
+		_, _, _ = conn.ReadFromUDP(message)
+		r, _ := shared.ReadRRQWRQPacket(message)
+		fmt.Println(r)
+	}
 }

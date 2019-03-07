@@ -13,6 +13,37 @@ func ErrorValidation(err error) {
 	}
 }
 
+func DeterminePacketType(data [] byte) int {
+	switch data[1] {
+	case 1:
+		return 1
+	case 2:
+		return 2
+	case 3:
+		return 3
+	case 4:
+		return 4
+	case 5:
+		return 5
+	default:
+		return 0
+	}
+}
+
+func CheckByteArrayEquality(byte1 [] byte, byte2 [] byte) bool {
+	if len(byte1) != len(byte2) {
+		return false
+	}
+
+	for index, value := range byte1 {
+		if value != byte2[index] {
+			return false
+		}
+	}
+
+	return true
+}
+
 // Interprets command line arguments for the program
 func InterpretCommandLineArguments(args [] string) (bool, bool, bool) {
 	var ipv6 bool
@@ -42,10 +73,10 @@ func InterpretCommandLineArguments(args [] string) (bool, bool, bool) {
 	return ipv6, slidingWindow, dropPackets
 }
 
-func showHelp()  {
+func showHelp() {
 	fmt.Println("usage: ./fileTransferring [<options>]")
 	fmt.Println()
 	fmt.Printf("\t--ipv6\t\t %s\n", "Specify if packets are IPv6 UDP datagrams instead of IPv4 packets")
 	fmt.Printf("\t--sw\t\t %s\n", "Specify use of TCP-style sliding windows rather than the sequential acks used in TFTP")
-	fmt.Printf("\t--dp\t\t %s\n\n" ,"Pretend to drop 1% of packets")
+	fmt.Printf("\t--dp\t\t %s\n\n", "Pretend to drop 1% of packets")
 }
