@@ -44,7 +44,7 @@ func InterpretCommandLineArguments(args [] string) (bool, bool, bool) {
 func showHelp()  {
 	fmt.Println("usage: ./fileTransferring [<options>]")
 	fmt.Println()
-	fmt.Printf("\t--ipv6\t\t %s\n", "Specifiy whether packets are IPv4 vs IPv6 UDP datagrams")
+	fmt.Printf("\t--ipv6\t\t %s\n", "Specify if packets are IPv6 UDP datagrams instead of IPv4 packets")
 	fmt.Printf("\t--sw\t\t %s\n", "Specify use of TCP-style sliding windows rather than the sequential acks used in TFTP")
-	fmt.Printf("\t--dp\t\t %s\n" ,"Pretend to drop 1%% of packets")
+	fmt.Printf("\t--dp\t\t %s\n\n" ,"Pretend to drop 1% of packets")
 }
