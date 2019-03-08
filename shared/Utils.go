@@ -44,6 +44,19 @@ func CheckByteArrayEquality(byte1 [] byte, byte2 [] byte) bool {
 	return true
 }
 
+func StripOffExtraneousBytes(bytes [] byte) [] byte {
+	var indexToStripAt int
+
+	for i := len(bytes) - 1; i >= 0; i-- {
+		if bytes[i] != 0 {
+			indexToStripAt = i
+			break
+		}
+	}
+
+	return bytes[:indexToStripAt + 1]
+}
+
 // Interprets command line arguments for the program
 func InterpretCommandLineArguments(args [] string) (bool, bool, bool) {
 	var ipv6 bool

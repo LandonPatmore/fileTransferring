@@ -122,20 +122,14 @@ func ReadRRQWRQPacket(data []byte) (p *RRQWRQPacket, err error) {
 	packet.Opcode = data[:2]
 
 	var zerosFound int
-	var firstZeroFound bool
-	var modeStart int
+
 	for index, b := range data[2:] {
 		if b == 0 {
 			zerosFound++
 		}
 		if zerosFound == 1 {
-			if !firstZeroFound {
-				packet.Filename = string(data[2 : index+2])
-				modeStart = index + 3
-				firstZeroFound = true
-			}
-		} else if zerosFound == 2 {
-			packet.Mode = string(data[modeStart : index+2])
+			packet.Filename = string(data[2:index + 2])
+			packet.Mode = string(data[index + 3 :])
 			return &packet, nil
 		}
 
@@ -150,7 +144,6 @@ func ReadDataPacket(data []byte) (d *DataPacket, err error) {
 
 	packet.Opcode = data[:2]
 	packet.BlockNumber = data[2:4]
-	// TODO: Need to fix this for the server having a buffer of 1024 bytes
 	packet.Data = data[4:]
 
 	return &packet, nil

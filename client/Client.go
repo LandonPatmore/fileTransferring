@@ -9,6 +9,7 @@ import (
 	"math"
 	"net"
 	"os"
+	"path/filepath"
 	"tideWatchAPI/utils"
 )
 
@@ -18,7 +19,11 @@ func main() {
 	fmt.Print("Server address: ")
 	_, _ = fmt.Scanf("%s", &serverAddress)
 
-	conn, connError := net.Dial("udp", serverAddress+":8274")
+	service := serverAddress + ":8274"
+
+	remoteAddr, err := net.ResolveUDPAddr("udp", service)
+
+	conn, connError := net.DialUDP("udp", nil, remoteAddr)
 	shared.ErrorValidation(connError)
 
 	var filePath string
@@ -28,12 +33,19 @@ func main() {
 	file, fileError := os.Open(filePath)
 	shared.ErrorValidation(fileError)
 
-	sendWRQPacket(conn, file.Name())
+	sendWRQPacket(conn, filepath.Base(file.Name()))
+	_ = receivePacket(conn, [] byte{0, 0})
 
-	//readFile(nil, file)
+	if err != nil {
+		fmt.Println("Cannot send packets...")
+	} else {
+		fmt.Println("Can start sending packets...")
+	}
+
+	readFile(conn, file)
 }
 
-func readFile(conn net.Conn, file *os.File) {
+func readFile(conn *net.UDPConn, file *os.File) {
 	scanner := bufio.NewScanner(file)
 
 	var message = make([]byte, 0, 512)
@@ -45,9 +57,10 @@ func readFile(conn net.Conn, file *os.File) {
 		addToArray(conn, &message, '\n', &currentPacket)
 	}
 	sendDataPacket(conn, &message, &currentPacket)
+	fmt.Println("Done reading and sending file...")
 }
 
-func addToArray(conn net.Conn, message *[] byte, nextByteToAppend byte, currentPacket *int) {
+func addToArray(conn *net.UDPConn, message *[] byte, nextByteToAppend byte, currentPacket *int) {
 	if checkMessageLength(message) {
 		sendDataPacket(conn, message, currentPacket)
 		*message = make([]byte, 0, 512)
@@ -62,7 +75,7 @@ func checkMessageLength(message *[] byte) bool {
 	return false
 }
 
-func sendWRQPacket(conn net.Conn, fileName string) {
+func sendWRQPacket(conn *net.UDPConn, fileName string) {
 	wPacket := shared.CreateRRQWRQPacket(false)
 	wPacket.Filename = fileName
 
@@ -73,7 +86,7 @@ func sendWRQPacket(conn net.Conn, fileName string) {
 	//_ = receivePacket(conn, []byte{0, 0})
 }
 
-func sendDataPacket(conn net.Conn, data *[] byte, currentPacket *int) {
+func sendDataPacket(conn *net.UDPConn, data *[] byte, currentPacket *int) {
 	dataPacket := shared.CreateDataPacket()
 	dataPacket.BlockNumber = createBlockNumber(currentPacket)
 	dataPacket.Data = *data
@@ -84,11 +97,12 @@ func sendDataPacket(conn net.Conn, data *[] byte, currentPacket *int) {
 	_ = receivePacket(conn, dataPacket.BlockNumber)
 }
 
-func receivePacket(conn net.Conn, blockNumber [] byte) error {
+func receivePacket(conn *net.UDPConn, blockNumber [] byte) error {
 	// TODO: When an error occurs here, send an error packet back (possibly if it is the client)
 
-	var data [] byte
-	_, err := conn.Read(data)
+	data := make([]byte, 1024)
+	_, _, err := conn.ReadFromUDP(data)
+	data = shared.StripOffExtraneousBytes(data)
 	utils.ErrorCheck(err)
 	t := shared.DeterminePacketType(data)
 
