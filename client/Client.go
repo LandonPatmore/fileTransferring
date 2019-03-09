@@ -5,7 +5,6 @@ import (
 	"fileTransferring/shared"
 	"fmt"
 	"github.com/pkg/errors"
-	"log"
 	"math"
 	"net"
 	"os"
@@ -15,7 +14,6 @@ import (
 
 var fileSize int64
 var totalBytesSent int64
-var displayableProgressBar = make([]string, 100)
 var packetsLost int
 
 func main() {
@@ -41,6 +39,8 @@ func main() {
 
 	fileSize = fi.Size()
 
+	defer file.Close()
+
 	sendWRQPacket(conn, filepath.Base(file.Name()))
 
 	readFile(conn, file)
@@ -57,6 +57,7 @@ func readFile(conn *net.UDPConn, file *os.File) {
 		}
 		addToArray(conn, &message, '\n', &currentPacket)
 	}
+	message = message[:len(message)-1] // to remove the last \n
 	sendDataPacket(conn, &message, &currentPacket)
 	fmt.Println("\nDone reading and sending file...")
 }
@@ -82,7 +83,6 @@ func sendWRQPacket(conn *net.UDPConn, fileName string) {
 
 	data := shared.CreateRRQWRQPacketByteArray(wPacket)
 
-	// TODO: Send packet
 	_, _ = conn.Write(data)
 	handleTimeout(conn, data, [] byte{0, 0})
 }
@@ -94,7 +94,6 @@ func sendDataPacket(conn *net.UDPConn, data *[] byte, currentPacket *int) {
 
 	d := shared.CreateDataPacketByteArray(dataPacket)
 
-	// TODO: Send packet
 	totalBytesSent += int64(len(dataPacket.Data))
 	displayProgressBar()
 
@@ -103,7 +102,6 @@ func sendDataPacket(conn *net.UDPConn, data *[] byte, currentPacket *int) {
 }
 
 func receivePacket(data [] byte, blockNumber [] byte) error {
-	// TODO: When an error occurs here, send an error packet back (possibly if it is the client)
 
 	t := shared.DeterminePacketType(data)
 
@@ -113,16 +111,13 @@ func receivePacket(data [] byte, blockNumber [] byte) error {
 		if shared.CheckByteArrayEquality(ack.BlockNumber, blockNumber) {
 			return nil
 		}
-		// TODO: Do something with this on top of just throwing an error
 		return errors.New("Block numbers do not match...")
 	case 5:
 		e, _ := shared.ReadErrorPacket(data)
 		return errors.New(fmt.Sprintf("Error code: %d\nError Message: %s", e.ErrorCode[1], e.ErrorMessage))
 	default:
-		log.Fatal("Client can only read Opcodes of 4 and 5...not: ", t)
+		return errors.New(fmt.Sprintf("Client can only read Opcodes of 4 and 5...not: %d", t))
 	}
-
-	return nil
 }
 
 func createBlockNumber(currentPacketNumber *int) [] byte {
@@ -138,7 +133,7 @@ func handleTimeout(conn *net.UDPConn, data []byte, blockNumber [] byte) {
 	_ = conn.SetReadDeadline(time.Now().Add(time.Second * 2))
 
 	receivedData := make([]byte, 516)
-	_, _, timedOut := conn.ReadFromUDP(receivedData)
+	bytesReceived, _, timedOut := conn.ReadFromUDP(receivedData)
 
 	if timedOut != nil {
 		packetsLost++
@@ -146,25 +141,14 @@ func handleTimeout(conn *net.UDPConn, data []byte, blockNumber [] byte) {
 		_, _ = conn.Write(data)
 		handleTimeout(conn, data, blockNumber)
 	} else {
-		err := receivePacket(receivedData, blockNumber)
+		err := receivePacket(receivedData[:bytesReceived], blockNumber)
 		shared.ErrorValidation(err)
 	}
 }
 
 func displayProgressBar() {
 	var totalDataSent = math.Floor(float64(totalBytesSent) / float64(fileSize) * 100)
-	if int(totalDataSent) != 0 {
-		displayableProgressBar[int(totalDataSent)-1] = "\u2588"
-	}
 
 	fmt.Print("\r")
-	fmt.Printf("Progress: (%d%% | Packets Lost: %d) ", int(totalDataSent), packetsLost)
-	for _, p := range displayableProgressBar {
-		if p == "" {
-			fmt.Print("_")
-		} else {
-			fmt.Print(p)
-		}
-	}
-	fmt.Printf(" %d/%d bytes sent", totalBytesSent, fileSize)
+	fmt.Printf("Progress: (%d%% | Packets Lost: %d | %d/%d bytes sent) ", int(totalDataSent), packetsLost, totalBytesSent, fileSize)
 }
