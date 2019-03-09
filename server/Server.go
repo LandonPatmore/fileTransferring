@@ -4,6 +4,7 @@ import (
 	"fileTransferring/shared"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"os"
 	"tideWatchAPI/utils"
@@ -12,7 +13,8 @@ import (
 var connectedClients = make(map[*net.UDPAddr]string)
 
 func main() {
-	ServerAddr, err := net.ResolveUDPAddr("udp", ":8274")
+
+	ServerAddr, err := net.ResolveUDPAddr("udp", shared.PORT)
 	shared.ErrorValidation(err)
 	conn, err := net.ListenUDP("udp", ServerAddr)
 	shared.ErrorValidation(err)
@@ -22,16 +24,15 @@ func main() {
 	fmt.Println("Server started...")
 
 	for {
-		receivePacket(conn)
+		readPacket(conn)
 	}
 }
 
-func receivePacket(conn *net.UDPConn) {
+func readPacket(conn *net.UDPConn) {
 	// TODO: When an error occurs here, send an error packet back (possibly if it is the client)
 
-	data := make([]byte, 1024)
+	data := make([]byte, 516)
 	_, addr, err := conn.ReadFromUDP(data)
-	data = shared.StripOffExtraneousBytes(data)
 	utils.ErrorCheck(err)
 	t := shared.DeterminePacketType(data)
 
@@ -40,9 +41,10 @@ func receivePacket(conn *net.UDPConn) {
 	switch t {
 	case 2:
 		// TODO: Send error packet if error
+		fmt.Println("WRQ packet has been received...")
 		r, _ := shared.ReadRRQWRQPacket(data)
 		addToAuthenticatedClients(addr, r.Filename)
-		err := createFile(r.Filename)
+		err := createFile(getFileNameForAddress(addr))
 		shared.ErrorValidation(err)
 		ack.BlockNumber = []byte{0, 0}
 	case 3:
@@ -50,7 +52,10 @@ func receivePacket(conn *net.UDPConn) {
 
 		if isAuthenticated {
 			d, _ := shared.ReadDataPacket(data)
+			d.Data = shared.StripOffExtraneousBytes(d.Data)
 			writeToFile(getFileNameForAddress(addr), d.Data)
+			checkEndOfTransfer(d.Data)
+			ack.BlockNumber = d.BlockNumber
 		} else {
 			// TODO: Error packet to be sent back
 			log.Fatal("This client has not been authenticated")
@@ -60,7 +65,9 @@ func receivePacket(conn *net.UDPConn) {
 		log.Fatal("Server can only read Opcodes of 2 and 3...not: ", t)
 	}
 
+	if rand.Float64() > 0.05 {
 	_, _ = conn.WriteToUDP(shared.CreateAckPacketByteArray(ack), addr)
+	}
 }
 
 func createFile(fileName string) error {
@@ -109,4 +116,10 @@ func getFileNameForAddress(addressToGet *net.UDPAddr) string {
 	}
 
 	return ""
+}
+
+func checkEndOfTransfer(data [] byte) {
+	if len(data) < 512 {
+		fmt.Println("File has been fully transferred")
+	}
 }

@@ -121,18 +121,22 @@ func ReadRRQWRQPacket(data []byte) (p *RRQWRQPacket, err error) {
 
 	packet.Opcode = data[:2]
 
-	var zerosFound int
+	var firstZeroFound bool
+	var modeStart int
 
 	for index, b := range data[2:] {
-		if b == 0 {
-			zerosFound++
+		if !firstZeroFound {
+			if b == 0 { // found the first one
+				packet.Filename = string(data[2 : index+2])
+				modeStart = index + 3
+				firstZeroFound = true
+			}
+		} else {
+			if b == 0 { // now found the second one
+				packet.Mode = string(data[modeStart : index+2])
+				return &packet, nil
+			}
 		}
-		if zerosFound == 1 {
-			packet.Filename = string(data[2:index + 2])
-			packet.Mode = string(data[index + 3 :])
-			return &packet, nil
-		}
-
 	}
 
 	return nil, errors.New("There was an error parsing the packet")
@@ -153,7 +157,7 @@ func ReadACKPacket(data []byte) (a *ACKPacket, err error) {
 	packet := ACKPacket{}
 
 	packet.Opcode = data[:2]
-	packet.BlockNumber = data[2:]
+	packet.BlockNumber = data[2:4]
 
 	return &packet, nil
 }

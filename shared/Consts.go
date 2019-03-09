@@ -10,3 +10,5 @@ const ERROR_5 = "Unknown transfer ID"
 const ERROR_6 = "File already exists"
 const ERROR_7 = "No such user"
 
+const PORT = ":8247"
+

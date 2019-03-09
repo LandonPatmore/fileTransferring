@@ -31,6 +31,7 @@ func DeterminePacketType(data [] byte) int {
 }
 
 func CheckByteArrayEquality(byte1 [] byte, byte2 [] byte) bool {
+	//fmt.Println("ACK: ", byte1, "Block: ", byte2)
 	if len(byte1) != len(byte2) {
 		return false
 	}
@@ -48,13 +49,17 @@ func StripOffExtraneousBytes(bytes [] byte) [] byte {
 	var indexToStripAt int
 
 	for i := len(bytes) - 1; i >= 0; i-- {
-		if bytes[i] != 0 {
-			indexToStripAt = i
-			break
+		if bytes[i] == 10 {
+			if i+1 == len(bytes) {
+				return bytes
+			} else if bytes[i+1] == 0 {
+				indexToStripAt = i
+				return bytes[:indexToStripAt+1]
+			}
 		}
 	}
 
-	return bytes[:indexToStripAt + 1]
+	return bytes
 }
 
 // Interprets command line arguments for the program

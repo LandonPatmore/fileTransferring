@@ -10,8 +10,12 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"tideWatchAPI/utils"
+	"time"
 )
+
+var fileSize int64
+var totalBytesSent int64
+var displayableProgressBar = make([]string, 10)
 
 func main() {
 	var serverAddress string
@@ -19,9 +23,8 @@ func main() {
 	fmt.Print("Server address: ")
 	_, _ = fmt.Scanf("%s", &serverAddress)
 
-	service := serverAddress + ":8274"
-
-	remoteAddr, err := net.ResolveUDPAddr("udp", service)
+	remoteAddr, err := net.ResolveUDPAddr("udp", serverAddress+shared.PORT)
+	shared.ErrorValidation(err)
 
 	conn, connError := net.DialUDP("udp", nil, remoteAddr)
 	shared.ErrorValidation(connError)
@@ -33,14 +36,11 @@ func main() {
 	file, fileError := os.Open(filePath)
 	shared.ErrorValidation(fileError)
 
-	sendWRQPacket(conn, filepath.Base(file.Name()))
-	_ = receivePacket(conn, [] byte{0, 0})
+	fi, _ := file.Stat()
 
-	if err != nil {
-		fmt.Println("Cannot send packets...")
-	} else {
-		fmt.Println("Can start sending packets...")
-	}
+	fileSize = fi.Size()
+
+	sendWRQPacket(conn, filepath.Base(file.Name()))
 
 	readFile(conn, file)
 }
@@ -57,7 +57,7 @@ func readFile(conn *net.UDPConn, file *os.File) {
 		addToArray(conn, &message, '\n', &currentPacket)
 	}
 	sendDataPacket(conn, &message, &currentPacket)
-	fmt.Println("Done reading and sending file...")
+	fmt.Println("\nDone reading and sending file...")
 }
 
 func addToArray(conn *net.UDPConn, message *[] byte, nextByteToAppend byte, currentPacket *int) {
@@ -79,11 +79,11 @@ func sendWRQPacket(conn *net.UDPConn, fileName string) {
 	wPacket := shared.CreateRRQWRQPacket(false)
 	wPacket.Filename = fileName
 
+	data := shared.CreateRRQWRQPacketByteArray(wPacket)
+
 	// TODO: Send packet
-	//fmt.Println(shared.CreateRRQWRQPacketByteArray(wPacket))
-	go conn.Write(shared.CreateRRQWRQPacketByteArray(wPacket))
-	// TODO: Receive packet (and handle error)
-	//_ = receivePacket(conn, []byte{0, 0})
+	_, _ = conn.Write(data)
+	handleTimeout(conn, data, [] byte{0, 0})
 }
 
 func sendDataPacket(conn *net.UDPConn, data *[] byte, currentPacket *int) {
@@ -91,19 +91,19 @@ func sendDataPacket(conn *net.UDPConn, data *[] byte, currentPacket *int) {
 	dataPacket.BlockNumber = createBlockNumber(currentPacket)
 	dataPacket.Data = *data
 
+	d := shared.CreateDataPacketByteArray(dataPacket)
+
 	// TODO: Send packet
-	go conn.Write(shared.CreateDataPacketByteArray(dataPacket))
-	// TODO: Receive packet (and handle error)
-	_ = receivePacket(conn, dataPacket.BlockNumber)
+	totalBytesSent += int64(len(dataPacket.Data))
+	go displayProgressBar()
+
+	_, _ = conn.Write(d)
+	handleTimeout(conn, d, dataPacket.BlockNumber)
 }
 
-func receivePacket(conn *net.UDPConn, blockNumber [] byte) error {
+func receivePacket(data [] byte, blockNumber [] byte) error {
 	// TODO: When an error occurs here, send an error packet back (possibly if it is the client)
 
-	data := make([]byte, 1024)
-	_, _, err := conn.ReadFromUDP(data)
-	data = shared.StripOffExtraneousBytes(data)
-	utils.ErrorCheck(err)
 	t := shared.DeterminePacketType(data)
 
 	switch t {
@@ -131,5 +131,51 @@ func createBlockNumber(currentPacketNumber *int) [] byte {
 	}
 	leadingByte := math.Floor(float64(*currentPacketNumber / 256))
 	return [] byte{byte(leadingByte), byte(*currentPacketNumber % 256)}
+}
 
+func handleTimeout(conn *net.UDPConn, data []byte, blockNumber [] byte) {
+	_ = conn.SetReadDeadline(time.Now().Add(time.Second * 2))
+
+	receivedData := make([]byte, 516)
+	_, _, timedOut := conn.ReadFromUDP(receivedData)
+
+	if timedOut != nil {
+		_, _ = conn.Write(data)
+		handleTimeout(conn, data, blockNumber)
+	} else {
+		err := receivePacket(receivedData, blockNumber)
+		shared.ErrorValidation(err)
+	}
+}
+
+func displayProgressBar() {
+	var totalDataSent = math.Floor(float64(totalBytesSent) / float64(fileSize) * 10)
+	if int(totalDataSent) != 0 {
+		displayableProgressBar[int(totalDataSent)-1] = "="
+	}
+
+	fmt.Print("\r")
+	fmt.Printf("Progress: (%d%%) ", int(totalDataSent*10))
+	for index, p := range displayableProgressBar {
+		if index == 0 {
+			if p == "" {
+				fmt.Print(" ")
+			} else {
+				fmt.Print("[" + p)
+			}
+		} else if index == 9 {
+			if p == "" {
+				fmt.Print(" ]")
+			} else {
+				fmt.Print(p + "]")
+			}
+		} else {
+			if p == "" {
+				fmt.Print(" ")
+			} else {
+				fmt.Print(p)
+			}
+		}
+	}
+	fmt.Printf(" %d/%d bytes sent", totalBytesSent, fileSize)
 }
