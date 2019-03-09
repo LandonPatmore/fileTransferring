@@ -3,9 +3,9 @@ package main
 import (
 	"fileTransferring/shared"
 	"fmt"
-	"log"
 	"net"
 	"os"
+	"strings"
 	"tideWatchAPI/utils"
 )
 
@@ -32,8 +32,6 @@ func main() {
 }
 
 func readPacket(conn *net.UDPConn) {
-	// TODO: When an error occurs here, send an error packet back (possibly if it is the client)
-
 	data := make([]byte, 516)
 	bytesReceived, addr, err := conn.ReadFromUDP(data)
 	data = data[:bytesReceived]
@@ -44,62 +42,93 @@ func readPacket(conn *net.UDPConn) {
 
 	switch t {
 	case 2:
-		// TODO: Send error packet if error
 		fmt.Println("WRQ packet has been received...")
 		r, _ := shared.ReadRRQWRQPacket(data)
-		if r.Mode != "octet" {
-			log.Fatal("This client only supports the octet mode, not: ", r.Mode)
+		if strings.ToLower(r.Mode) != "octet" {
+			sendPacketToClient(conn, addr, createErrorPacket(shared.ERROR_0, "This server only supports octet mode, not: "+r.Mode))
+			return
+		} else {
+			addToAuthenticatedClients(addr, r.Filename)
+			errorPacket, hasError := createFile(getFileNameForAddress(addr))
+			if hasError {
+				sendPacketToClient(conn, addr, errorPacket)
+				removeAuthenticatedClient(addr)
+				return
+			} else {
+				ack.BlockNumber = []byte{0, 0}
+			}
 		}
-		addToAuthenticatedClients(addr, r.Filename)
-		err := createFile(getFileNameForAddress(addr))
-		shared.ErrorValidation(err)
-		ack.BlockNumber = []byte{0, 0}
 	case 3:
 		isAuthenticated := checkAuthenticatedClient(addr)
 
 		if isAuthenticated {
 			d, _ := shared.ReadDataPacket(data)
-			writeToFile(getFileNameForAddress(addr), d.Data)
-			checkEndOfTransfer(d.Data)
-			ack.BlockNumber = d.BlockNumber
+			errorPacket, hasError := writeToFile(getFileNameForAddress(addr), d.Data)
+			if hasError {
+				sendPacketToClient(conn, addr, errorPacket)
+				return
+			} else {
+				checkEndOfTransfer(d.Data, addr)
+				ack.BlockNumber = d.BlockNumber
+			}
 		} else {
-			// TODO: Error packet to be sent back
-			log.Fatal("This client has not been authenticated")
+			sendPacketToClient(conn, addr, createErrorPacket(shared.ERROR_0, fmt.Sprintf("Client has not sent a WRQ Packet, permission denied")))
 		}
-
+	case 5:
+		// TODO: Do something with an error packet from the client...
 	default:
-		log.Fatal("Server can only read Opcodes of 2 and 3...not: ", t)
+		sendPacketToClient(conn, addr, createErrorPacket(shared.ERROR_0, fmt.Sprintf("Server only supports Opcodes of 2,3, and 5...not: %d", t)))
 	}
 
-	//if rand.Float64() > 0.05 {
-	_, _ = conn.WriteToUDP(shared.CreateAckPacketByteArray(ack), addr)
-	//}
+	sendPacketToClient(conn, addr, shared.CreateAckPacketByteArray(ack))
 }
 
-func createFile(fileName string) error {
-	_, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	return err
+func sendPacketToClient(conn *net.UDPConn, addr *net.UDPAddr, data [] byte) {
+	_, _ = conn.WriteToUDP(data, addr)
 }
 
-func writeToFile(fileName string, data []byte) {
-	// TODO: Error packets need to be sent here
-	fmt.Println("Writing to file...")
+func createFile(fileName string) (ePacket [] byte, hasError bool) {
+	_, err := os.Stat(fileName)
+	if e, hasError := checkFileError(err); hasError {
+		return e, true
+	}
+
+	_, err = os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if e, hasError := checkFileError(err); hasError {
+		return e, true
+	}
+
+	return nil, false
+}
+
+func writeToFile(fileName string, data []byte) (eData [] byte, hasError bool) {
 	f, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if e, hasError := checkFileError(err); hasError {
+		return e, true
+	}
 	if err != nil {
-		log.Fatal(err)
+		if e, hasError := checkFileError(err); hasError {
+			return e, true
+		}
 	}
 	if _, err := f.Write(data); err != nil {
-		log.Fatal(err)
+		if e, hasError := checkFileError(err); hasError {
+			return e, true
+		}
 	}
 	if err := f.Close(); err != nil {
-		log.Fatal(err)
+		if e, hasError := checkFileError(err); hasError {
+			return e, true
+		}
 	}
+
+	return nil, false
 }
 
 func addToAuthenticatedClients(addr *net.UDPAddr, fileName string) {
 	hasBeenAdded := checkAuthenticatedClient(addr)
 	if !hasBeenAdded {
-		connectedClients[addr] = "_test_" + fileName
+		connectedClients[addr] = fileName
 	}
 }
 
@@ -113,6 +142,15 @@ func checkAuthenticatedClient(toAdd *net.UDPAddr) bool {
 	return false
 }
 
+func removeAuthenticatedClient(toRemove *net.UDPAddr) {
+	for addr := range connectedClients {
+		if addr.IP.Equal(toRemove.IP) {
+			delete(connectedClients, addr)
+			return
+		}
+	}
+}
+
 func getFileNameForAddress(addressToGet *net.UDPAddr) string {
 	// TODO: Need to handle non-found addresses if they get through
 	for addr := range connectedClients {
@@ -124,8 +162,28 @@ func getFileNameForAddress(addressToGet *net.UDPAddr) string {
 	return ""
 }
 
-func checkEndOfTransfer(data [] byte) {
+func checkEndOfTransfer(data [] byte, addressToRemove *net.UDPAddr) {
 	if len(data) < 512 {
 		fmt.Println("File has been fully transferred")
+		removeAuthenticatedClient(addressToRemove)
 	}
+}
+
+func checkFileError(err error) (ePacket [] byte, hasError bool) {
+	if os.IsExist(err) {
+		return createErrorPacket(shared.ERROR_6, shared.ERROR_6_MESSAGE), true
+	} else if os.IsPermission(err) {
+		return createErrorPacket(shared.ERROR_2, shared.ERROR_2_MESSAGE), true
+	} else if os.IsNotExist(err) {
+		return nil, false
+	} else if err != nil {
+		return createErrorPacket(shared.ERROR_0, err.Error()), true
+	}
+
+	return nil, false
+}
+
+func createErrorPacket(errorCode [] byte, errorMessage string) [] byte {
+	ePacket := shared.CreateErrorPacket(errorCode, errorMessage)
+	return shared.CreateErrorPacketByteArray(ePacket)
 }
