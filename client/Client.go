@@ -16,6 +16,7 @@ import (
 var fileSize int64
 var totalBytesSent int64
 var displayableProgressBar = make([]string, 100)
+var packetsLost int
 
 func main() {
 	var serverAddress string
@@ -95,7 +96,7 @@ func sendDataPacket(conn *net.UDPConn, data *[] byte, currentPacket *int) {
 
 	// TODO: Send packet
 	totalBytesSent += int64(len(dataPacket.Data))
-	go displayProgressBar()
+	displayProgressBar()
 
 	_, _ = conn.Write(d)
 	handleTimeout(conn, d, dataPacket.BlockNumber)
@@ -140,6 +141,8 @@ func handleTimeout(conn *net.UDPConn, data []byte, blockNumber [] byte) {
 	_, _, timedOut := conn.ReadFromUDP(receivedData)
 
 	if timedOut != nil {
+		packetsLost++
+		displayProgressBar()
 		_, _ = conn.Write(data)
 		handleTimeout(conn, data, blockNumber)
 	} else {
@@ -155,10 +158,10 @@ func displayProgressBar() {
 	}
 
 	fmt.Print("\r")
-	fmt.Printf("Progress: (%d%%) ", int(totalDataSent))
+	fmt.Printf("Progress: (%d%% | Packets Lost: %d) ", int(totalDataSent), packetsLost)
 	for _, p := range displayableProgressBar {
 		if p == "" {
-			fmt.Print(" ")
+			fmt.Print("_")
 		} else {
 			fmt.Print(p)
 		}
