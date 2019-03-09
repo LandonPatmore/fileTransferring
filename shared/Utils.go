@@ -63,7 +63,7 @@ func StripOffExtraneousBytes(bytes [] byte) [] byte {
 }
 
 // Interprets command line arguments for the program
-func InterpretCommandLineArguments(args [] string) (bool, bool, bool) {
+func InterpretCommandLineArguments(args [] string) (v6 bool, sw bool, dp bool) {
 	var ipv6 bool
 	var slidingWindow bool
 	var dropPackets bool

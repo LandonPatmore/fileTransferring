@@ -12,6 +12,8 @@ import (
 var connectedClients = make(map[*net.UDPAddr]string)
 
 func main() {
+	v6, sw, dp := shared.InterpretCommandLineArguments(os.Args)
+	fmt.Printf("IPv6 Packets: %t\nSliding Window: %t\nDrop 1%% of Packets: %t\n", v6, sw, dp)
 
 	ServerAddr, err := net.ResolveUDPAddr("udp", shared.PORT)
 	shared.ErrorValidation(err)
@@ -42,6 +44,9 @@ func readPacket(conn *net.UDPConn) {
 		// TODO: Send error packet if error
 		fmt.Println("WRQ packet has been received...")
 		r, _ := shared.ReadRRQWRQPacket(data)
+		if r.Mode != "octet" {
+			log.Fatal("This client only supports the octet mode, not: ", r.Mode)
+		}
 		addToAuthenticatedClients(addr, r.Filename)
 		err := createFile(getFileNameForAddress(addr))
 		shared.ErrorValidation(err)
