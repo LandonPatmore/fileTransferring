@@ -4,7 +4,6 @@ import (
 	"fileTransferring/shared"
 	"fmt"
 	"log"
-	"math/rand"
 	"net"
 	"os"
 	"tideWatchAPI/utils"
@@ -65,9 +64,9 @@ func readPacket(conn *net.UDPConn) {
 		log.Fatal("Server can only read Opcodes of 2 and 3...not: ", t)
 	}
 
-	if rand.Float64() > 0.05 {
+	//if rand.Float64() > 0.05 {
 	_, _ = conn.WriteToUDP(shared.CreateAckPacketByteArray(ack), addr)
-	}
+	//}
 }
 
 func createFile(fileName string) error {
