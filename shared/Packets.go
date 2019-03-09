@@ -65,10 +65,12 @@ func CreateACKPacket() *ACKPacket {
 	return &a
 }
 
-func CreateErrorPacket() *ErrorPacket {
+func CreateErrorPacket(errorCode [] byte, errorMessage string) *ErrorPacket {
 	var e ErrorPacket
 
 	e.Opcode = []byte{0, 5}
+	e.ErrorCode = errorCode
+	e.ErrorMessage = errorMessage
 
 	return &e
 }
