@@ -15,7 +15,7 @@ import (
 
 var fileSize int64
 var totalBytesSent int64
-var displayableProgressBar = make([]string, 10)
+var displayableProgressBar = make([]string, 100)
 
 func main() {
 	var serverAddress string
@@ -149,32 +149,18 @@ func handleTimeout(conn *net.UDPConn, data []byte, blockNumber [] byte) {
 }
 
 func displayProgressBar() {
-	var totalDataSent = math.Floor(float64(totalBytesSent) / float64(fileSize) * 10)
+	var totalDataSent = math.Floor(float64(totalBytesSent) / float64(fileSize) * 100)
 	if int(totalDataSent) != 0 {
-		displayableProgressBar[int(totalDataSent)-1] = "="
+		displayableProgressBar[int(totalDataSent)-1] = "\u2588"
 	}
 
 	fmt.Print("\r")
-	fmt.Printf("Progress: (%d%%) ", int(totalDataSent*10))
-	for index, p := range displayableProgressBar {
-		if index == 0 {
-			if p == "" {
-				fmt.Print(" ")
-			} else {
-				fmt.Print("[" + p)
-			}
-		} else if index == 9 {
-			if p == "" {
-				fmt.Print(" ]")
-			} else {
-				fmt.Print(p + "]")
-			}
+	fmt.Printf("Progress: (%d%%) ", int(totalDataSent))
+	for _, p := range displayableProgressBar {
+		if p == "" {
+			fmt.Print(" ")
 		} else {
-			if p == "" {
-				fmt.Print(" ")
-			} else {
-				fmt.Print(p)
-			}
+			fmt.Print(p)
 		}
 	}
 	fmt.Printf(" %d/%d bytes sent", totalBytesSent, fileSize)
