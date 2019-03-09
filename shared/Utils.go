@@ -9,7 +9,7 @@ import (
 // Checks if there are any errors panics if there are
 func ErrorValidation(err error) {
 	if err != nil {
-		log.Panic(err)
+		log.Fatal(err)
 	}
 }
 
