@@ -9,6 +9,8 @@ import (
 	"tideWatchAPI/utils"
 )
 
+// TODO: Need to fix issue with files that are smaller than 512 bytes
+
 var connectedClients = make(map[*net.UDPAddr]string)
 
 func main() {
@@ -33,7 +35,8 @@ func readPacket(conn *net.UDPConn) {
 	// TODO: When an error occurs here, send an error packet back (possibly if it is the client)
 
 	data := make([]byte, 516)
-	_, addr, err := conn.ReadFromUDP(data)
+	bytesReceived, addr, err := conn.ReadFromUDP(data)
+	data = data[:bytesReceived]
 	utils.ErrorCheck(err)
 	t := shared.DeterminePacketType(data)
 
@@ -56,7 +59,6 @@ func readPacket(conn *net.UDPConn) {
 
 		if isAuthenticated {
 			d, _ := shared.ReadDataPacket(data)
-			d.Data = shared.StripOffExtraneousBytes(d.Data)
 			writeToFile(getFileNameForAddress(addr), d.Data)
 			checkEndOfTransfer(d.Data)
 			ack.BlockNumber = d.BlockNumber
