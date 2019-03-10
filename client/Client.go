@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"math"
+	"math/rand"
 	"net"
 	"os"
 	"path/filepath"
@@ -14,9 +15,18 @@ import (
 
 var fileSize int64
 var totalBytesSent int64
+var totalPacketsSent int
+var totalPacketsToSend int
 var packetsLost int
+var packetsToDrop [] int
+var v6 bool
+var sw bool
+var dp bool
 
 func main() {
+	v6, sw, dp = shared.InterpretCommandLineArguments(os.Args)
+	fmt.Printf("IPv6 Packets: %t\nSliding Window: %t\nDrop 1%% of Packets: %t\n", v6, sw, dp)
+
 	var serverAddress string
 
 	fmt.Print("Server address: ")
@@ -36,8 +46,12 @@ func main() {
 	shared.ErrorValidation(fileError)
 
 	fi, _ := file.Stat()
-
 	fileSize = fi.Size()
+
+	if dp {
+		determineAmountOfPacketsToSend()
+		determinePacketsToDrop()
+	}
 
 	defer file.Close()
 
@@ -95,10 +109,28 @@ func sendDataPacket(conn *net.UDPConn, data *[] byte, currentPacket *int) {
 	d := shared.CreateDataPacketByteArray(dataPacket)
 
 	totalBytesSent += int64(len(dataPacket.Data))
+	totalPacketsSent++
 	displayProgressBar()
 
-	_, _ = conn.Write(d)
-	handleTimeout(conn, d, dataPacket.BlockNumber)
+	if dp {
+		var foundPacketToDrop bool
+		for _, packetToDrop := range packetsToDrop {
+			if totalPacketsSent == packetToDrop {
+				foundPacketToDrop = true
+				break
+			}
+		}
+
+		if foundPacketToDrop {
+			handleTimeout(conn, d, dataPacket.BlockNumber)
+		} else {
+			_, _ = conn.Write(d)
+			handleTimeout(conn, d, dataPacket.BlockNumber)
+		}
+	} else {
+		_, _ = conn.Write(d)
+		handleTimeout(conn, d, dataPacket.BlockNumber)
+	}
 }
 
 func receivePacket(data [] byte, blockNumber [] byte) error {
@@ -150,5 +182,22 @@ func displayProgressBar() {
 	var totalDataSent = math.Floor(float64(totalBytesSent) / float64(fileSize) * 100)
 
 	fmt.Print("\r")
-	fmt.Printf("Progress: (%d%% | Packets Lost: %d | %d/%d bytes sent) ", int(totalDataSent), packetsLost, totalBytesSent, fileSize)
+	fmt.Printf("Progress: (%d%% | Packets Lost: %d | %d/%d packets sent) ", int(totalDataSent), packetsLost, totalPacketsSent, totalPacketsToSend)
+}
+
+func determineAmountOfPacketsToSend() { // yes the last packet will be smaller, but we don't care
+	totalPacketsToSend = int(math.Ceil(float64(fileSize) / 512))
+}
+
+func determinePacketsToDrop() {
+	var onePercentOfPacketsToDrop = math.Ceil(float64(totalPacketsToSend) * 0.01)
+
+	// randomly choose which packets to drop
+	for {
+		if len(packetsToDrop) != int(onePercentOfPacketsToDrop) {
+			packetsToDrop = append(packetsToDrop, rand.Intn(totalPacketsToSend))
+		} else {
+			break
+		}
+	}
 }

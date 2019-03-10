@@ -2,14 +2,15 @@ package shared
 
 import (
 	"fmt"
-	"log"
 	"os"
 )
 
 // Checks if there are any errors panics if there are
 func ErrorValidation(err error) {
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println("\n")
+		fmt.Println(err)
+		os.Exit(-1)
 	}
 }
 

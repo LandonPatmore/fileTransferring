@@ -9,7 +9,7 @@ import (
 	"tideWatchAPI/utils"
 )
 
-// TODO: Need to fix issue with files that are smaller than 512 bytes
+// TODO: Need to timeout users that authenticated after a certain amount of time, even if we did not get the full file
 
 var connectedClients = make(map[*net.UDPAddr]string)
 
@@ -49,9 +49,10 @@ func readPacket(conn *net.UDPConn) {
 			return
 		} else {
 			addToAuthenticatedClients(addr, r.Filename)
-			errorPacket, hasError := createFile(getFileNameForAddress(addr))
+			errorPacket, hasError := checkFileExists(getFileNameForAddress(addr))
 			if hasError {
 				sendPacketToClient(conn, addr, errorPacket)
+				fmt.Println("WRQ place removed")
 				removeAuthenticatedClient(addr)
 				return
 			} else {
@@ -59,9 +60,7 @@ func readPacket(conn *net.UDPConn) {
 			}
 		}
 	case 3:
-		isAuthenticated := checkAuthenticatedClient(addr)
-
-		if isAuthenticated {
+		if checkAuthenticatedClient(addr) {
 			d, _ := shared.ReadDataPacket(data)
 			errorPacket, hasError := writeToFile(getFileNameForAddress(addr), d.Data)
 			if hasError {
@@ -74,8 +73,6 @@ func readPacket(conn *net.UDPConn) {
 		} else {
 			sendPacketToClient(conn, addr, createErrorPacket(shared.ERROR_0, fmt.Sprintf("Client has not sent a WRQ Packet, permission denied")))
 		}
-	case 5:
-		// TODO: Do something with an error packet from the client...
 	default:
 		sendPacketToClient(conn, addr, createErrorPacket(shared.ERROR_0, fmt.Sprintf("Server only supports Opcodes of 2,3, and 5...not: %d", t)))
 	}
@@ -84,42 +81,31 @@ func readPacket(conn *net.UDPConn) {
 }
 
 func sendPacketToClient(conn *net.UDPConn, addr *net.UDPAddr, data [] byte) {
+
 	_, _ = conn.WriteToUDP(data, addr)
 }
 
-func createFile(fileName string) (ePacket [] byte, hasError bool) {
+func checkFileExists(fileName string) (ePacket [] byte, hasError bool) {
 	_, err := os.Stat(fileName)
-	if e, hasError := checkFileError(err); hasError {
-		return e, true
+
+	if os.IsNotExist(err) {
+		return nil, false
 	}
 
-	_, err = os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if e, hasError := checkFileError(err); hasError {
-		return e, true
-	}
-
-	return nil, false
+	return createErrorPacket(shared.ERROR_6, shared.ERROR_6_MESSAGE), true
 }
 
 func writeToFile(fileName string, data []byte) (eData [] byte, hasError bool) {
 	f, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if e, hasError := checkFileError(err); hasError {
-		return e, true
-	}
+
 	if err != nil {
-		if e, hasError := checkFileError(err); hasError {
-			return e, true
-		}
+		return createErrorPacket(shared.ERROR_0, err.Error()), true
 	}
 	if _, err := f.Write(data); err != nil {
-		if e, hasError := checkFileError(err); hasError {
-			return e, true
-		}
+		return createErrorPacket(shared.ERROR_0, err.Error()), true
 	}
 	if err := f.Close(); err != nil {
-		if e, hasError := checkFileError(err); hasError {
-			return e, true
-		}
+		return createErrorPacket(shared.ERROR_0, err.Error()), true
 	}
 
 	return nil, false
@@ -146,6 +132,7 @@ func removeAuthenticatedClient(toRemove *net.UDPAddr) {
 	for addr := range connectedClients {
 		if addr.IP.Equal(toRemove.IP) {
 			delete(connectedClients, addr)
+			fmt.Println("Client: " + toRemove.IP.String() + " has been removed from the list of authenticated users...")
 			return
 		}
 	}
@@ -167,20 +154,6 @@ func checkEndOfTransfer(data [] byte, addressToRemove *net.UDPAddr) {
 		fmt.Println("File has been fully transferred")
 		removeAuthenticatedClient(addressToRemove)
 	}
-}
-
-func checkFileError(err error) (ePacket [] byte, hasError bool) {
-	if os.IsExist(err) {
-		return createErrorPacket(shared.ERROR_6, shared.ERROR_6_MESSAGE), true
-	} else if os.IsPermission(err) {
-		return createErrorPacket(shared.ERROR_2, shared.ERROR_2_MESSAGE), true
-	} else if os.IsNotExist(err) {
-		return nil, false
-	} else if err != nil {
-		return createErrorPacket(shared.ERROR_0, err.Error()), true
-	}
-
-	return nil, false
 }
 
 func createErrorPacket(errorCode [] byte, errorMessage string) [] byte {
