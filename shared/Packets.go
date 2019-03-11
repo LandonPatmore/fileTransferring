@@ -85,7 +85,7 @@ func CreateErrorPacket(errorCode [] byte, errorMessage string) *ErrorPacket {
 	return &e
 }
 
-func CreateRRQWRQPacketByteArray(z *RRQWRQPacket) [] byte {
+func (z *RRQWRQPacket) ByteArray() [] byte {
 	var byteArray []byte
 
 	byteArray = append(byteArray, z.Opcode...)
@@ -104,7 +104,7 @@ func CreateRRQWRQPacketByteArray(z *RRQWRQPacket) [] byte {
 	return byteArray
 }
 
-func CreateDataPacketByteArray(d *DataPacket) [] byte {
+func (d *DataPacket) ByteArray() [] byte {
 	var byteArray []byte
 
 	byteArray = append(byteArray, d.Opcode...)
@@ -114,7 +114,7 @@ func CreateDataPacketByteArray(d *DataPacket) [] byte {
 	return byteArray
 }
 
-func CreateAckPacketByteArray(a *ACKPacket) [] byte {
+func (a *ACKPacket) ByteArray() [] byte {
 	var byteArray []byte
 
 	byteArray = append(byteArray, a.Opcode...)
@@ -132,7 +132,7 @@ func CreateAckPacketByteArray(a *ACKPacket) [] byte {
 	return byteArray
 }
 
-func CreateErrorPacketByteArray(e *ErrorPacket) [] byte {
+func (e *ErrorPacket) ByteArray() [] byte {
 	var byteArray []byte
 
 	byteArray = append(byteArray, e.Opcode...)

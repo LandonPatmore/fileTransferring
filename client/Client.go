@@ -91,7 +91,7 @@ func checkMessageLength(message *[] byte) bool {
 func sendWRQPacket(conn *net.UDPConn, fileName string, options map[string]string) {
 	wPacket := shared.CreateRRQWRQPacket(false, fileName, options)
 
-	data := shared.CreateRRQWRQPacketByteArray(wPacket)
+	data := wPacket.ByteArray()
 
 	//sendPacket(conn, data, []byte{0, 0})
 	conn.Write(data)
@@ -105,7 +105,7 @@ func sendDataPacket(conn *net.UDPConn, data *[] byte, currentPacket *int) {
 	dataPacket.BlockNumber = createBlockNumber(currentPacket)
 	dataPacket.Data = *data
 
-	d := shared.CreateDataPacketByteArray(dataPacket)
+	d := dataPacket.ByteArray()
 
 	totalBytesSent += int64(len(dataPacket.Data))
 	totalPacketsSent++

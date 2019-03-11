@@ -84,7 +84,7 @@ func readPacket(conn *net.UDPConn) {
 		sendPacketToClient(conn, addr, createErrorPacket(shared.Error0, fmt.Sprintf("Server only supports Opcodes of 2,3, and 5...not: %d", t)))
 	}
 
-	sendPacketToClient(conn, addr, shared.CreateAckPacketByteArray(ack))
+	sendPacketToClient(conn, addr, ack.ByteArray())
 }
 
 func sendPacketToClient(conn *net.UDPConn, addr *net.UDPAddr, data [] byte) {
@@ -165,5 +165,5 @@ func checkEndOfTransfer(data [] byte, addressToRemove *net.UDPAddr) {
 
 func createErrorPacket(errorCode [] byte, errorMessage string) [] byte {
 	ePacket := shared.CreateErrorPacket(errorCode, errorMessage)
-	return shared.CreateErrorPacketByteArray(ePacket)
+	return ePacket.ByteArray()
 }
