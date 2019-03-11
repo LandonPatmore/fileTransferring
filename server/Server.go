@@ -45,7 +45,7 @@ func readPacket(conn *net.UDPConn) {
 		fmt.Println("WRQ packet has been received...")
 		r, _ := shared.ReadRRQWRQPacket(data)
 		if strings.ToLower(r.Mode) != "octet" {
-			sendPacketToClient(conn, addr, createErrorPacket(shared.ERROR_0, "This server only supports octet mode, not: "+r.Mode))
+			sendPacketToClient(conn, addr, createErrorPacket(shared.Error0, "This server only supports octet mode, not: "+r.Mode))
 			return
 		} else {
 			addToAuthenticatedClients(addr, r.Filename)
@@ -71,10 +71,10 @@ func readPacket(conn *net.UDPConn) {
 				ack.BlockNumber = d.BlockNumber
 			}
 		} else {
-			sendPacketToClient(conn, addr, createErrorPacket(shared.ERROR_0, fmt.Sprintf("Client has not sent a WRQ Packet, permission denied")))
+			sendPacketToClient(conn, addr, createErrorPacket(shared.Error0, fmt.Sprintf("Client has not sent a WRQ Packet, permission denied")))
 		}
 	default:
-		sendPacketToClient(conn, addr, createErrorPacket(shared.ERROR_0, fmt.Sprintf("Server only supports Opcodes of 2,3, and 5...not: %d", t)))
+		sendPacketToClient(conn, addr, createErrorPacket(shared.Error0, fmt.Sprintf("Server only supports Opcodes of 2,3, and 5...not: %d", t)))
 	}
 
 	sendPacketToClient(conn, addr, shared.CreateAckPacketByteArray(ack))
@@ -92,20 +92,20 @@ func checkFileExists(fileName string) (ePacket [] byte, hasError bool) {
 		return nil, false
 	}
 
-	return createErrorPacket(shared.ERROR_6, shared.ERROR_6_MESSAGE), true
+	return createErrorPacket(shared.Error6, shared.Error6Message), true
 }
 
 func writeToFile(fileName string, data []byte) (eData [] byte, hasError bool) {
 	f, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 
 	if err != nil {
-		return createErrorPacket(shared.ERROR_0, err.Error()), true
+		return createErrorPacket(shared.Error0, err.Error()), true
 	}
 	if _, err := f.Write(data); err != nil {
-		return createErrorPacket(shared.ERROR_0, err.Error()), true
+		return createErrorPacket(shared.Error0, err.Error()), true
 	}
 	if err := f.Close(); err != nil {
-		return createErrorPacket(shared.ERROR_0, err.Error()), true
+		return createErrorPacket(shared.Error0, err.Error()), true
 	}
 
 	return nil, false
