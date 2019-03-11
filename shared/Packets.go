@@ -93,6 +93,7 @@ func CreateRRQWRQPacketByteArray(z *RRQWRQPacket) [] byte {
 	byteArray = append(byteArray, z.zero)
 	byteArray = append(byteArray, z.Mode...)
 	byteArray = append(byteArray, z.zeroTwo)
+
 	for k := range z.Options {
 		byteArray = append(byteArray, []byte(k)...)
 		byteArray = append(byteArray, 0)
@@ -157,6 +158,9 @@ func ReadRRQWRQPacket(data []byte) (p *RRQWRQPacket, err error) {
 		}
 	}
 
+	packet.Filename = string(packetBytes[0].Bytes)
+	packet.Mode = string(packetBytes[1].Bytes)
+
 	if len(packetBytes) > 2 { // we now know its an option packet
 		var options = packetBytes[2:]
 		var optionsMapping = make(map[string]string)
@@ -172,10 +176,7 @@ func ReadRRQWRQPacket(data []byte) (p *RRQWRQPacket, err error) {
 		return nil, errors.New("Options are missing values")
 	}
 
-	packet.Filename = string(packetBytes[0].Bytes)
-	packet.Mode = string(packetBytes[1].Bytes)
-
-	return nil, errors.New("There was an error parsing the packet")
+	return &packet, nil
 }
 
 func ReadDataPacket(data []byte) (d *DataPacket, err error) {
@@ -202,6 +203,7 @@ func ReadOACKPacket(data []byte) (a *ACKPacket, err error) {
 	packet := ACKPacket{}
 
 	packet.Opcode = data[:2]
+	packet.IsOACK = true
 
 	var lastZeroSeen = 2
 	var packetBytes [] ArrayBytesHelper
@@ -213,7 +215,7 @@ func ReadOACKPacket(data []byte) (a *ACKPacket, err error) {
 		}
 	}
 
-	if len(packetBytes) > 2 { // we now know its an option packet
+	if len(packetBytes) >= 2 {
 		var options = packetBytes
 		var optionsMapping = make(map[string]string)
 		if len(options)%2 == 0 {
