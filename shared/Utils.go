@@ -14,23 +14,6 @@ func ErrorValidation(err error) {
 	}
 }
 
-func DeterminePacketType(data [] byte) int {
-	switch data[1] {
-	case 1:
-		return 1
-	case 2:
-		return 2
-	case 3:
-		return 3
-	case 4:
-		return 4
-	case 5:
-		return 5
-	default:
-		return 0
-	}
-}
-
 func CheckByteArrayEquality(byte1 [] byte, byte2 [] byte) bool {
 	//fmt.Println("ACK: ", byte1, "Block: ", byte2)
 	if len(byte1) != len(byte2) {
