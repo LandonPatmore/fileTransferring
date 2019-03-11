@@ -8,7 +8,6 @@ import (
 // Checks if there are any errors panics if there are
 func ErrorValidation(err error) {
 	if err != nil {
-		fmt.Println("\n")
 		fmt.Println(err)
 		os.Exit(-1)
 	}
