@@ -19,13 +19,9 @@ var totalPacketsSent int
 var totalPacketsToSend int
 var packetsLost int
 var packetsToDrop [] int
-var v6 bool
-var sw bool
-var dp bool
 
 func main() {
-	v6, sw, dp = shared.InterpretCommandLineArguments(os.Args)
-	fmt.Printf("IPv6 Packets: %t\nSliding Window: %t\nDrop 1%% of Packets: %t\n", v6, sw, dp)
+	options := InterpretCommandLineArguments(os.Args)
 
 	var serverAddress string
 
@@ -48,14 +44,15 @@ func main() {
 	fi, _ := file.Stat()
 	fileSize = fi.Size()
 
-	if dp {
-		determineAmountOfPacketsToSend()
-		determinePacketsToDrop()
-	}
+	//determineAmountOfPacketsToSend()
+	//
+	//if dp {
+	//	determinePacketsToDrop()
+	//}
 
 	defer file.Close()
 
-	sendWRQPacket(conn, filepath.Base(file.Name()))
+	sendWRQPacket(conn, filepath.Base(file.Name()), options)
 
 	readFile(conn, file)
 }
@@ -91,14 +88,12 @@ func checkMessageLength(message *[] byte) bool {
 	return false
 }
 
-func sendWRQPacket(conn *net.UDPConn, fileName string) {
-	wPacket := shared.CreateRRQWRQPacket(false)
-	wPacket.Filename = fileName
+func sendWRQPacket(conn *net.UDPConn, fileName string, options map[string]string) {
+	wPacket := shared.CreateRRQWRQPacket(false, fileName, options)
 
 	data := shared.CreateRRQWRQPacketByteArray(wPacket)
 
-	_, _ = conn.Write(data)
-	handleTimeout(conn, data, [] byte{0, 0})
+	sendPacket(conn, data, []byte{0, 0})
 }
 
 func sendDataPacket(conn *net.UDPConn, data *[] byte, currentPacket *int) {
@@ -112,25 +107,7 @@ func sendDataPacket(conn *net.UDPConn, data *[] byte, currentPacket *int) {
 	totalPacketsSent++
 	displayProgressBar()
 
-	if dp {
-		var foundPacketToDrop bool
-		for _, packetToDrop := range packetsToDrop {
-			if totalPacketsSent == packetToDrop {
-				foundPacketToDrop = true
-				break
-			}
-		}
-
-		if foundPacketToDrop {
-			handleTimeout(conn, d, dataPacket.BlockNumber)
-		} else {
-			_, _ = conn.Write(d)
-			handleTimeout(conn, d, dataPacket.BlockNumber)
-		}
-	} else {
-		_, _ = conn.Write(d)
-		handleTimeout(conn, d, dataPacket.BlockNumber)
-	}
+	sendPacket(conn, d, dataPacket.BlockNumber)
 }
 
 func receivePacket(data [] byte, blockNumber [] byte) error {
@@ -161,21 +138,32 @@ func createBlockNumber(currentPacketNumber *int) [] byte {
 	return [] byte{byte(leadingByte), byte(*currentPacketNumber % 256)}
 }
 
-func handleTimeout(conn *net.UDPConn, data []byte, blockNumber [] byte) {
+func sendPacket(conn *net.UDPConn, data []byte, blockNumber [] byte) {
+	for i := 0; i < 10; i++ {
+		//if !shouldDropPacket() {
+		_, _ = conn.Write(data)
+		//}
+		receivedData, err := handleReadTimeout(conn)
+		if err == nil {
+			err := receivePacket(receivedData, blockNumber)
+			shared.ErrorValidation(err)
+			return
+		} else {
+			packetsLost++
+			displayProgressBar()
+		}
+	}
+
+	shared.ErrorValidation(errors.New("Total retries exhausted...exiting"))
+}
+
+func handleReadTimeout(conn *net.UDPConn) ([] byte, error) {
 	_ = conn.SetReadDeadline(time.Now().Add(time.Second * 2))
 
 	receivedData := make([]byte, 516)
 	bytesReceived, _, timedOut := conn.ReadFromUDP(receivedData)
 
-	if timedOut != nil {
-		packetsLost++
-		displayProgressBar()
-		_, _ = conn.Write(data)
-		handleTimeout(conn, data, blockNumber)
-	} else {
-		err := receivePacket(receivedData[:bytesReceived], blockNumber)
-		shared.ErrorValidation(err)
-	}
+	return receivedData[:bytesReceived], timedOut
 }
 
 func displayProgressBar() {
@@ -200,4 +188,61 @@ func determinePacketsToDrop() {
 			break
 		}
 	}
+}
+
+//func shouldDropPacket() bool {
+//	if dp {
+//		for _, packetToDrop := range packetsToDrop {
+//			if totalPacketsSent == packetToDrop {
+//				return true
+//			}
+//		}
+//	}
+//
+//	return false
+//}
+
+// Interprets command line arguments for the program
+func InterpretCommandLineArguments(args [] string) map[string]string {
+	options := make(map[string]string)
+
+	if len(args[1:]) > 1 {
+		fmt.Print("Options Specified: ")
+
+		for _, arg := range args[1:] {
+			switch arg {
+			case "--ipv6":
+				options["packetMode"] = "ipv6"
+				fmt.Print(" IPv6 |")
+				break
+			case "--sw":
+				options["sendMode"] = "sw"
+				fmt.Print(" Sliding Window Mode |")
+				break
+			case "--dp":
+				options["simulation"] = "dp"
+				fmt.Print(" Drop Packets Simulation |")
+				break
+			case "-h":
+				showHelp()
+				os.Exit(0)
+			default:
+				fmt.Print(" " + arg + " (not supported) |")
+			}
+		}
+
+		fmt.Println()
+		return options
+	} else {
+		fmt.Println("Default Options: IPv4 | Sequential Acks Mode | No Simulation")
+		return nil
+	}
+}
+
+func showHelp() {
+	fmt.Println("usage: ./fileTransferring [<options>]")
+	fmt.Println()
+	fmt.Printf("\t--ipv6\t\t %s\n", "Specify if packets are IPv6 UDP datagrams instead of IPv4 packets")
+	fmt.Printf("\t--sw\t\t %s\n", "Specify use of TCP-style sliding windows rather than the sequential acks used in TFTP")
+	fmt.Printf("\t--dp\t\t %s\n\n", "Pretend to drop 1% of packets")
 }
