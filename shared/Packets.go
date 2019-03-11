@@ -8,6 +8,7 @@ import (
 // Each packet includes fields including zero byte values
 // so it is easier to understand what is going on as
 // certain fields are chained together to create a packet
+
 type RRQWRQPacket struct {
 	Opcode   [] byte // 01/02
 	Filename string
@@ -37,11 +38,12 @@ type ErrorPacket struct {
 	zero         byte
 }
 
+// Helper so there isn't a need for a 2D array (even though it would probably be more efficient)
 type ArrayBytesHelper struct {
-	// Helper so there isn't a need for a 2D array (even though it would probably be more efficient)
 	Bytes [] byte
 }
 
+// Creates a RRQ or WRQ Packet
 func CreateRRQWRQPacket(isRRQ bool, fileName string, options map[string]string) *RRQWRQPacket {
 	var z RRQWRQPacket
 
@@ -58,6 +60,7 @@ func CreateRRQWRQPacket(isRRQ bool, fileName string, options map[string]string) 
 	return &z
 }
 
+// Creates a Data Packet
 func CreateDataPacket() *DataPacket {
 	var d DataPacket
 
@@ -67,6 +70,7 @@ func CreateDataPacket() *DataPacket {
 	return &d
 }
 
+// Creates an ACK Packet
 func CreateACKPacket() *ACKPacket {
 	var a ACKPacket
 
@@ -75,6 +79,7 @@ func CreateACKPacket() *ACKPacket {
 	return &a
 }
 
+// Creates an Error Packet
 func CreateErrorPacket(errorCode [] byte, errorMessage string) *ErrorPacket {
 	var e ErrorPacket
 
@@ -85,6 +90,7 @@ func CreateErrorPacket(errorCode [] byte, errorMessage string) *ErrorPacket {
 	return &e
 }
 
+// Returns a byte array of a RRQ or WRQ Packet
 func (z *RRQWRQPacket) ByteArray() [] byte {
 	var byteArray []byte
 
@@ -104,6 +110,7 @@ func (z *RRQWRQPacket) ByteArray() [] byte {
 	return byteArray
 }
 
+// Returns a byte array of a Data Packet
 func (d *DataPacket) ByteArray() [] byte {
 	var byteArray []byte
 
@@ -114,6 +121,7 @@ func (d *DataPacket) ByteArray() [] byte {
 	return byteArray
 }
 
+// Returns a byte array of an ACK Packet
 func (a *ACKPacket) ByteArray() [] byte {
 	var byteArray []byte
 
@@ -132,6 +140,7 @@ func (a *ACKPacket) ByteArray() [] byte {
 	return byteArray
 }
 
+// Returns a byte array of an Error Packet
 func (e *ErrorPacket) ByteArray() [] byte {
 	var byteArray []byte
 
@@ -143,6 +152,7 @@ func (e *ErrorPacket) ByteArray() [] byte {
 	return byteArray
 }
 
+// Reads a data array and returns an RRQ or WRQ packet with a possible error as well
 func ReadRRQWRQPacket(data []byte) (p *RRQWRQPacket, err error) {
 	packet := RRQWRQPacket{}
 
@@ -179,8 +189,8 @@ func ReadRRQWRQPacket(data []byte) (p *RRQWRQPacket, err error) {
 	return &packet, nil
 }
 
+// Reads a data array and returns a Data packet with a possible error as well
 func ReadDataPacket(data []byte) (d *DataPacket, err error) {
-	// TODO: Figure out where to throw error packet here
 	packet := DataPacket{}
 
 	packet.Opcode = data[:2]
@@ -190,6 +200,7 @@ func ReadDataPacket(data []byte) (d *DataPacket, err error) {
 	return &packet, nil
 }
 
+// Reads a data array and returns an ACK packet with a possible error as well
 func ReadACKPacket(data []byte) (a *ACKPacket, err error) {
 	packet := ACKPacket{}
 
@@ -199,6 +210,7 @@ func ReadACKPacket(data []byte) (a *ACKPacket, err error) {
 	return &packet, nil
 }
 
+// Reads a data array and returns an OACK/ACK packet with a possible error as well
 func ReadOACKPacket(data []byte) (a *ACKPacket, err error) {
 	packet := ACKPacket{}
 
@@ -233,6 +245,7 @@ func ReadOACKPacket(data []byte) (a *ACKPacket, err error) {
 	return &packet, nil
 }
 
+// Reads a data array and returns an Error packet with a possible error as well
 func ReadErrorPacket(data []byte) (e *ErrorPacket, err error) {
 	packet := ErrorPacket{}
 
