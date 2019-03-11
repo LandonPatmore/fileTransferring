@@ -11,11 +11,16 @@ import (
 
 // TODO: Need to timeout users that authenticated after a certain amount of time, even if we did not get the full file
 
-var connectedClients = make(map[*net.UDPAddr]string)
+var connectedClients = make(map[string]string)
+var availableOptions = make(map[string]string)
+
+type ConnectedClient struct {
+	FileName               string
+	LastTimePacketReceived int64
+}
 
 func main() {
-	//v6, sw, dp := shared.InterpretCommandLineArguments(os.Args)
-	//fmt.Printf("IPv6 Packets: %t\nSliding Window: %t\nDrop 1%% of Packets: %t\n", v6, sw, dp)
+	initializeOptions()
 
 	ServerAddr, err := net.ResolveUDPAddr("udp", shared.PORT)
 	shared.ErrorValidation(err)
@@ -43,38 +48,39 @@ func readPacket(conn *net.UDPConn) {
 	switch t {
 	case 2:
 		fmt.Println("WRQ packet has been received...")
-		r, _ := shared.ReadRRQWRQPacket(data)
-		if r.Options != nil {
+		w, _ := shared.ReadRRQWRQPacket(data)
+		if w.Options != nil {
 			ack.IsOACK = true
 			ack.Opcode = [] byte{0, 6}
-			// TODO: Need to parse the options to send back what are actually supported
-			ack.Options = r.Options
+			supportedOptions := parseOptions(w.Options)
+			ack.Options = supportedOptions
+			addToAuthenticatedClients(addr.String(), w.Filename)
 			break
 		}
-		if strings.ToLower(r.Mode) != "octet" {
-			sendPacketToClient(conn, addr, createErrorPacket(shared.Error0, "This server only supports octet mode, not: "+r.Mode))
+		if strings.ToLower(w.Mode) != "octet" {
+			sendPacketToClient(conn, addr, createErrorPacket(shared.Error0, "This server only supports octet mode, not: "+w.Mode))
 			return
 		} else {
-			addToAuthenticatedClients(addr, r.Filename)
-			errorPacket, hasError := checkFileExists(getFileNameForAddress(addr))
+			addToAuthenticatedClients(addr.String(), w.Filename)
+			errorPacket, hasError := checkFileExists(getFileNameForAddress(addr.String()))
 			if hasError {
 				sendPacketToClient(conn, addr, errorPacket)
 				fmt.Println("WRQ place removed")
-				removeAuthenticatedClient(addr)
+				removeAuthenticatedClient(addr.String())
 				return
 			} else {
 				ack.BlockNumber = []byte{0, 0}
 			}
 		}
 	case 3:
-		if checkAuthenticatedClient(addr) {
+		if checkAuthenticatedClient(addr.String()) {
 			d, _ := shared.ReadDataPacket(data)
-			errorPacket, hasError := writeToFile(getFileNameForAddress(addr), d.Data)
+			errorPacket, hasError := writeToFile(getFileNameForAddress(addr.String()), d.Data)
 			if hasError {
 				sendPacketToClient(conn, addr, errorPacket)
 				return
 			} else {
-				checkEndOfTransfer(d.Data, addr)
+				checkEndOfTransfer(d.Data, addr.String())
 				ack.BlockNumber = d.BlockNumber
 			}
 		} else {
@@ -118,45 +124,27 @@ func writeToFile(fileName string, data []byte) (eData [] byte, hasError bool) {
 	return nil, false
 }
 
-func addToAuthenticatedClients(addr *net.UDPAddr, fileName string) {
+func addToAuthenticatedClients(addr string, fileName string) {
 	hasBeenAdded := checkAuthenticatedClient(addr)
 	if !hasBeenAdded {
 		connectedClients[addr] = fileName
 	}
 }
 
-func checkAuthenticatedClient(toAdd *net.UDPAddr) bool {
-	for addr := range connectedClients {
-		if addr.IP.Equal(toAdd.IP) {
-			return true
-		}
-	}
-
-	return false
+func checkAuthenticatedClient(toAdd string) bool {
+	_, isAuthenticated := connectedClients[toAdd]
+	return isAuthenticated
 }
 
-func removeAuthenticatedClient(toRemove *net.UDPAddr) {
-	for addr := range connectedClients {
-		if addr.IP.Equal(toRemove.IP) {
-			delete(connectedClients, addr)
-			fmt.Println("Client: " + toRemove.IP.String() + " has been removed from the list of authenticated users...")
-			return
-		}
-	}
+func removeAuthenticatedClient(toRemove string) {
+	delete(connectedClients, toRemove)
 }
 
-func getFileNameForAddress(addressToGet *net.UDPAddr) string {
-	// TODO: Need to handle non-found addresses if they get through
-	for addr := range connectedClients {
-		if addr.IP.Equal(addressToGet.IP) {
-			return connectedClients[addr]
-		}
-	}
-
-	return ""
+func getFileNameForAddress(addressToGet string) string {
+	return connectedClients[addressToGet]
 }
 
-func checkEndOfTransfer(data [] byte, addressToRemove *net.UDPAddr) {
+func checkEndOfTransfer(data [] byte, addressToRemove string) {
 	if len(data) < 512 {
 		fmt.Println("File has been fully transferred")
 		removeAuthenticatedClient(addressToRemove)
@@ -166,4 +154,22 @@ func checkEndOfTransfer(data [] byte, addressToRemove *net.UDPAddr) {
 func createErrorPacket(errorCode [] byte, errorMessage string) [] byte {
 	ePacket := shared.CreateErrorPacket(errorCode, errorMessage)
 	return ePacket.ByteArray()
+}
+
+func initializeOptions() {
+	availableOptions["packetMode"] = "ipv6"
+	availableOptions["sendMode"] = "sw"
+	availableOptions["simulation"] = "dp"
+}
+
+func parseOptions(oackPacketOptions map[string]string) map[string]string {
+	var supportedOptions = make(map[string]string)
+
+	for k, v := range availableOptions {
+		if oackPacketOptions[k] == v {
+			supportedOptions[k] = v
+		}
+	}
+
+	return supportedOptions
 }
