@@ -14,8 +14,8 @@ import (
 var connectedClients = make(map[*net.UDPAddr]string)
 
 func main() {
-	v6, sw, dp := shared.InterpretCommandLineArguments(os.Args)
-	fmt.Printf("IPv6 Packets: %t\nSliding Window: %t\nDrop 1%% of Packets: %t\n", v6, sw, dp)
+	//v6, sw, dp := shared.InterpretCommandLineArguments(os.Args)
+	//fmt.Printf("IPv6 Packets: %t\nSliding Window: %t\nDrop 1%% of Packets: %t\n", v6, sw, dp)
 
 	ServerAddr, err := net.ResolveUDPAddr("udp", shared.PORT)
 	shared.ErrorValidation(err)
@@ -36,7 +36,7 @@ func readPacket(conn *net.UDPConn) {
 	bytesReceived, addr, err := conn.ReadFromUDP(data)
 	data = data[:bytesReceived]
 	utils.ErrorCheck(err)
-	t := shared.DeterminePacketType(data)
+	t := data[1]
 
 	ack := shared.CreateACKPacket()
 
@@ -44,6 +44,13 @@ func readPacket(conn *net.UDPConn) {
 	case 2:
 		fmt.Println("WRQ packet has been received...")
 		r, _ := shared.ReadRRQWRQPacket(data)
+		if r.Options != nil {
+			ack.IsOACK = true
+			ack.Opcode = [] byte{0, 6}
+			// TODO: Need to parse the options to send back what are actually supported
+			ack.Options = r.Options
+			break
+		}
 		if strings.ToLower(r.Mode) != "octet" {
 			sendPacketToClient(conn, addr, createErrorPacket(shared.Error0, "This server only supports octet mode, not: "+r.Mode))
 			return

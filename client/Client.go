@@ -23,10 +23,10 @@ var packetsToDrop [] int
 func main() {
 	options := InterpretCommandLineArguments(os.Args)
 
-	var serverAddress string
+	var serverAddress string = "127.0.0.1"
 
-	fmt.Print("Server address: ")
-	_, _ = fmt.Scanf("%s", &serverAddress)
+	//fmt.Print("Server address: ")
+	//_, _ = fmt.Scanf("%s", &serverAddress)
 
 	remoteAddr, err := net.ResolveUDPAddr("udp", serverAddress+shared.PORT)
 	shared.ErrorValidation(err)
@@ -34,9 +34,9 @@ func main() {
 	conn, connError := net.DialUDP("udp", nil, remoteAddr)
 	shared.ErrorValidation(connError)
 
-	var filePath string
-	fmt.Print("Enter full file path: ")
-	_, _ = fmt.Scanf("%s", &filePath)
+	var filePath string = "/Users/landon/Desktop/bigfile.txt"
+	//fmt.Print("Enter full file path: ")
+	//_, _ = fmt.Scanf("%s", &filePath)
 
 	file, fileError := os.Open(filePath)
 	shared.ErrorValidation(fileError)
@@ -54,7 +54,7 @@ func main() {
 
 	sendWRQPacket(conn, filepath.Base(file.Name()), options)
 
-	readFile(conn, file)
+	//readFile(conn, file)
 }
 
 func readFile(conn *net.UDPConn, file *os.File) {
@@ -93,7 +93,11 @@ func sendWRQPacket(conn *net.UDPConn, fileName string, options map[string]string
 
 	data := shared.CreateRRQWRQPacketByteArray(wPacket)
 
-	sendPacket(conn, data, []byte{0, 0})
+	//sendPacket(conn, data, []byte{0, 0})
+	conn.Write(data)
+	receivedData := make([]byte, 516)
+	bytesReceived, _, _ := conn.ReadFromUDP(receivedData)
+	_ = receivePacket(receivedData[:bytesReceived], [] byte{0, 0})
 }
 
 func sendDataPacket(conn *net.UDPConn, data *[] byte, currentPacket *int) {
@@ -112,18 +116,25 @@ func sendDataPacket(conn *net.UDPConn, data *[] byte, currentPacket *int) {
 
 func receivePacket(data [] byte, blockNumber [] byte) error {
 
-	t := shared.DeterminePacketType(data)
+	t := data[1]
 
 	switch t {
 	case 4:
 		ack, _ := shared.ReadACKPacket(data)
-		if shared.CheckByteArrayEquality(ack.BlockNumber, blockNumber) {
+		if ack.Options != nil {
+			// TODO: Do something with the options returned by the server
+			return nil
+		} else if shared.CheckByteArrayEquality(ack.BlockNumber, blockNumber) {
 			return nil
 		}
 		return errors.New("Block numbers do not match...")
 	case 5:
 		e, _ := shared.ReadErrorPacket(data)
 		return errors.New(fmt.Sprintf("Error code: %d\nError Message: %s", e.ErrorCode[1], e.ErrorMessage))
+	case 6:
+		oack, _ := shared.ReadOACKPacket(data)
+		fmt.Println(oack)
+		return nil
 	default:
 		return errors.New(fmt.Sprintf("Client can only read Opcodes of 4 and 5...not: %d", t))
 	}
@@ -206,7 +217,7 @@ func determinePacketsToDrop() {
 func InterpretCommandLineArguments(args [] string) map[string]string {
 	options := make(map[string]string)
 
-	if len(args[1:]) > 1 {
+	if len(args[1:]) > 0 {
 		fmt.Print("Options Specified: ")
 
 		for _, arg := range args[1:] {
