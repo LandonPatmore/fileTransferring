@@ -15,8 +15,8 @@ var connectedClients = make(map[string]string)
 var availableOptions = make(map[string]string)
 
 type ConnectedClient struct {
-	FileName               string
-	LastTimePacketReceived int64
+	FileName string
+	Options  map[string]string
 }
 
 func main() {
@@ -54,23 +54,21 @@ func readPacket(conn *net.UDPConn) {
 			ack.Opcode = [] byte{0, 6}
 			supportedOptions := parseOptions(w.Options)
 			ack.Options = supportedOptions
-			addToAuthenticatedClients(addr.String(), w.Filename)
-			break
 		}
 		if strings.ToLower(w.Mode) != "octet" {
-			sendPacketToClient(conn, addr, createErrorPacket(shared.Error0, "This server only supports octet mode, not: "+w.Mode))
+			if !ack.IsOACK {
+				sendPacketToClient(conn, addr, createErrorPacket(shared.Error0, "This server only supports octet mode, not: "+w.Mode))
+				return
+			}
+		}
+		addToAuthenticatedClients(addr.String(), w.Filename)
+		errorPacket, hasError := checkFileExists(getFileNameForAddress(addr.String()))
+		if hasError {
+			sendPacketToClient(conn, addr, errorPacket)
+			removeAuthenticatedClient(addr.String())
 			return
 		} else {
-			addToAuthenticatedClients(addr.String(), w.Filename)
-			errorPacket, hasError := checkFileExists(getFileNameForAddress(addr.String()))
-			if hasError {
-				sendPacketToClient(conn, addr, errorPacket)
-				fmt.Println("WRQ place removed")
-				removeAuthenticatedClient(addr.String())
-				return
-			} else {
-				ack.BlockNumber = []byte{0, 0}
-			}
+			ack.BlockNumber = []byte{0, 0}
 		}
 	case 3:
 		if checkAuthenticatedClient(addr.String()) {
@@ -87,14 +85,13 @@ func readPacket(conn *net.UDPConn) {
 			sendPacketToClient(conn, addr, createErrorPacket(shared.Error0, fmt.Sprintf("Client has not sent a WRQ Packet, permission denied")))
 		}
 	default:
-		sendPacketToClient(conn, addr, createErrorPacket(shared.Error0, fmt.Sprintf("Server only supports Opcodes of 2,3, and 5...not: %d", t)))
+		sendPacketToClient(conn, addr, createErrorPacket(shared.Error0, fmt.Sprintf("Server only supports Opcodes of 2,3, 5, and 6...not: %d", t)))
 	}
 
 	sendPacketToClient(conn, addr, ack.ByteArray())
 }
 
 func sendPacketToClient(conn *net.UDPConn, addr *net.UDPAddr, data [] byte) {
-
 	_, _ = conn.WriteToUDP(data, addr)
 }
 

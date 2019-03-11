@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"math"
-	"math/rand"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -21,7 +21,7 @@ var packetsLost int
 var packetsToDrop [] int
 
 func main() {
-	options := InterpretCommandLineArguments(os.Args)
+	options := getCommandLineArguments(os.Args)
 
 	var serverAddress string = "127.0.0.1"
 	//fmt.Print("Server address: ")
@@ -43,11 +43,13 @@ func main() {
 	fi, _ := file.Stat()
 	fileSize = fi.Size()
 
+	totalPacketsToSend = determineAmountOfPacketsToSend(fileSize)
+
 	defer file.Close()
 
 	sendWRQPacket(conn, filepath.Base(file.Name()), options)
 
-	//readFile(conn, file)
+	readFile(conn, file)
 }
 
 func readFile(conn *net.UDPConn, file *os.File) {
@@ -86,11 +88,7 @@ func sendWRQPacket(conn *net.UDPConn, fileName string, options map[string]string
 
 	data := wPacket.ByteArray()
 
-	//sendPacket(conn, data, []byte{0, 0})
-	conn.Write(data)
-	receivedData := make([]byte, 516)
-	bytesReceived, _, _ := conn.ReadFromUDP(receivedData)
-	_ = receivePacket(receivedData[:bytesReceived], [] byte{0, 0})
+	sendPacket(conn, data, []byte{0, 0})
 }
 
 func sendDataPacket(conn *net.UDPConn, data *[] byte, currentPacket *int) {
@@ -175,65 +173,41 @@ func displayProgressBar() {
 	fmt.Printf("Progress: (%d%% | Packets Lost: %d | %d/%d packets sent) ", int(totalDataSent), packetsLost, totalPacketsSent, totalPacketsToSend)
 }
 
-func determineAmountOfPacketsToSend() { // yes the last packet will be smaller, but we don't care
-	totalPacketsToSend = int(math.Ceil(float64(fileSize) / 512))
+func determineAmountOfPacketsToSend(fileSize int64) int { // yes the last packet will be smaller, but we don't care
+	return int(math.Ceil(float64(fileSize) / 512))
 }
-
-func determinePacketsToDrop() {
-	var onePercentOfPacketsToDrop = math.Ceil(float64(totalPacketsToSend) * 0.01)
-
-	// randomly choose which packets to drop
-	for {
-		if len(packetsToDrop) != int(onePercentOfPacketsToDrop) {
-			packetsToDrop = append(packetsToDrop, rand.Intn(totalPacketsToSend))
-		} else {
-			break
-		}
-	}
-}
-
-//func shouldDropPacket() bool {
-//	if dp {
-//		for _, packetToDrop := range packetsToDrop {
-//			if totalPacketsSent == packetToDrop {
-//				return true
-//			}
-//		}
-//	}
-//
-//	return false
-//}
 
 // Interprets command line arguments for the program
-func InterpretCommandLineArguments(args [] string) map[string]string {
+func getCommandLineArguments(args [] string) map[string]string {
 	options := make(map[string]string)
+	builder := strings.Builder{}
 
 	if len(args[1:]) > 0 {
-		fmt.Print("Options Specified: ")
+		builder.WriteString("Options specified: ")
 
 		for _, arg := range args[1:] {
 			switch arg {
 			case "--ipv6":
 				options["packetMode"] = "ipv6"
-				fmt.Print(" IPv6 |")
+				builder.WriteString(" IPv6 |")
 				break
 			case "--sw":
 				options["sendMode"] = "sw"
-				fmt.Print(" Sliding Window Mode |")
+				builder.WriteString(" Sliding Window Mode |")
 				break
 			case "--dp":
 				options["simulation"] = "dp"
-				fmt.Print(" Drop Packets Simulation |")
+				builder.WriteString(" Drop Packets Simulation |")
 				break
 			case "-h":
 				showHelp()
 				os.Exit(0)
 			default:
-				fmt.Print(" " + arg + " (not supported) |")
+				builder.WriteString(" " + arg + " (not supported) |")
 			}
 		}
 
-		fmt.Println()
+		fmt.Println(builder.String())
 		return options
 	} else {
 		fmt.Println("Default Options: IPv4 | Sequential Acks Mode | No Simulation")
