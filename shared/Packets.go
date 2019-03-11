@@ -14,6 +14,7 @@ type RRQWRQPacket struct {
 	zero     byte
 	Mode     string // octet only for assignment
 	zeroTwo  byte
+	Options  map[string]string
 }
 
 type DataPacket struct {
@@ -23,18 +24,25 @@ type DataPacket struct {
 }
 
 type ACKPacket struct {
-	Opcode      [] byte //04
+	Opcode      [] byte // 04/06
 	BlockNumber [] byte
+	IsOACK      bool
+	Options     map[string]string
 }
 
 type ErrorPacket struct {
 	Opcode       [] byte //05
-	ErrorCode    [] byte //00 - 07
+	ErrorCode    [] byte //00 - 08
 	ErrorMessage string
 	zero         byte
 }
 
-func CreateRRQWRQPacket(isRRQ bool) *RRQWRQPacket {
+type ArrayBytesHelper struct {
+	// Helper so there isn't a need for a 2D array (even though it would probably be more efficient)
+	Bytes [] byte
+}
+
+func CreateRRQWRQPacket(isRRQ bool, fileName string, options map[string]string) *RRQWRQPacket {
 	var z RRQWRQPacket
 
 	if isRRQ {
@@ -43,7 +51,9 @@ func CreateRRQWRQPacket(isRRQ bool) *RRQWRQPacket {
 		z.Opcode = []byte{0, 2}
 	}
 
+	z.Filename = fileName
 	z.Mode = "octet"
+	z.Options = options
 
 	return &z
 }
@@ -83,6 +93,12 @@ func CreateRRQWRQPacketByteArray(z *RRQWRQPacket) [] byte {
 	byteArray = append(byteArray, z.zero)
 	byteArray = append(byteArray, z.Mode...)
 	byteArray = append(byteArray, z.zeroTwo)
+	for k := range z.Options {
+		byteArray = append(byteArray, []byte(k)...)
+		byteArray = append(byteArray, 0)
+		byteArray = append(byteArray, []byte(z.Options[k])...)
+		byteArray = append(byteArray, 0)
+	}
 
 	return byteArray
 }
@@ -101,7 +117,16 @@ func CreateAckPacketByteArray(a *ACKPacket) [] byte {
 	var byteArray []byte
 
 	byteArray = append(byteArray, a.Opcode...)
-	byteArray = append(byteArray, a.BlockNumber...)
+	if !a.IsOACK {
+		byteArray = append(byteArray, a.BlockNumber...)
+	} else {
+		for k := range a.Options {
+			byteArray = append(byteArray, []byte(k)...)
+			byteArray = append(byteArray, 0)
+			byteArray = append(byteArray, []byte(a.Options[k])...)
+			byteArray = append(byteArray, 0)
+		}
+	}
 
 	return byteArray
 }
@@ -118,28 +143,37 @@ func CreateErrorPacketByteArray(e *ErrorPacket) [] byte {
 }
 
 func ReadRRQWRQPacket(data []byte) (p *RRQWRQPacket, err error) {
-	// TODO: Figure out where to throw error packet here instead of error
 	packet := RRQWRQPacket{}
 
 	packet.Opcode = data[:2]
 
-	var firstZeroFound bool
-	var modeStart int
-
+	var lastZeroSeen = 2
+	var packetBytes [] ArrayBytesHelper
 	for index, b := range data[2:] {
-		if !firstZeroFound {
-			if b == 0 { // found the first one
-				packet.Filename = string(data[2 : index+2])
-				modeStart = index + 3
-				firstZeroFound = true
-			}
-		} else {
-			if b == 0 { // now found the second one
-				packet.Mode = string(data[modeStart : index+2])
-				return &packet, nil
-			}
+		if b == 0 {
+			bytes := data[lastZeroSeen : index+2]
+			lastZeroSeen = index + 3
+			packetBytes = append(packetBytes, ArrayBytesHelper{bytes})
 		}
 	}
+
+	if len(packetBytes) > 2 { // we now know its an option packet
+		var options = packetBytes[2:]
+		var optionsMapping = make(map[string]string)
+		if len(options)%2 == 0 {
+			for i := 0; i <= len(options)-2; i += 2 { // loop over and map the keys to values of the options
+				optionsMapping[string(options[i].Bytes)] = string(options[i+1].Bytes)
+			}
+
+			packet.Options = optionsMapping
+
+			return &packet, nil
+		}
+		return nil, errors.New("Options are missing values")
+	}
+
+	packet.Filename = string(packetBytes[0].Bytes)
+	packet.Mode = string(packetBytes[1].Bytes)
 
 	return nil, errors.New("There was an error parsing the packet")
 }
@@ -160,6 +194,39 @@ func ReadACKPacket(data []byte) (a *ACKPacket, err error) {
 
 	packet.Opcode = data[:2]
 	packet.BlockNumber = data[2:4]
+
+	return &packet, nil
+}
+
+func ReadOACKPacket(data []byte) (a *ACKPacket, err error) {
+	packet := ACKPacket{}
+
+	packet.Opcode = data[:2]
+
+	var lastZeroSeen = 2
+	var packetBytes [] ArrayBytesHelper
+	for index, b := range data[2:] {
+		if b == 0 {
+			bytes := data[lastZeroSeen : index+2]
+			lastZeroSeen = index + 3
+			packetBytes = append(packetBytes, ArrayBytesHelper{bytes})
+		}
+	}
+
+	if len(packetBytes) > 2 { // we now know its an option packet
+		var options = packetBytes
+		var optionsMapping = make(map[string]string)
+		if len(options)%2 == 0 {
+			for i := 0; i <= len(options)-2; i += 2 { // loop over and map the keys to values of the options
+				optionsMapping[string(options[i].Bytes)] = string(options[i+1].Bytes)
+			}
+
+			packet.Options = optionsMapping
+
+			return &packet, nil
+		}
+		return nil, errors.New("Options are missing values")
+	}
 
 	return &packet, nil
 }
