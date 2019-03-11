@@ -24,7 +24,6 @@ func main() {
 	options := InterpretCommandLineArguments(os.Args)
 
 	var serverAddress string = "127.0.0.1"
-
 	//fmt.Print("Server address: ")
 	//_, _ = fmt.Scanf("%s", &serverAddress)
 
@@ -43,12 +42,6 @@ func main() {
 
 	fi, _ := file.Stat()
 	fileSize = fi.Size()
-
-	//determineAmountOfPacketsToSend()
-	//
-	//if dp {
-	//	determinePacketsToDrop()
-	//}
 
 	defer file.Close()
 
@@ -151,9 +144,7 @@ func createBlockNumber(currentPacketNumber *int) [] byte {
 
 func sendPacket(conn *net.UDPConn, data []byte, blockNumber [] byte) {
 	for i := 0; i < 10; i++ {
-		//if !shouldDropPacket() {
 		_, _ = conn.Write(data)
-		//}
 		receivedData, err := handleReadTimeout(conn)
 		if err == nil {
 			err := receivePacket(receivedData, blockNumber)
