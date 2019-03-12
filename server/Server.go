@@ -15,15 +15,17 @@ import (
 var connectedClients = make(map[string]*ConnectedClient)
 var availableOptions = make(map[string]string)
 
+var v6 bool
+var dp bool
+
 type ConnectedClient struct {
 	FileName            string
-	IPv6                bool
 	SlidingWindow       bool
 	LastSeenBlockNumber [] byte // this is only for sliding window
-	DropPackets         bool
 }
 
 func main() {
+	v6, _, dp = shared.InterpretCommandLineArguments(os.Args, false)
 	initializeOptions()
 
 	ServerAddr, err := net.ResolveUDPAddr("udp", shared.PORT)
@@ -57,12 +59,12 @@ func readPacket(conn *net.UDPConn) {
 		w, _ := shared.ReadRRQWRQPacket(data)
 
 		var supportedOptions map[string]string
-		var v6, sw, dp bool
+		var sw, dp bool
 
 		if w.Options != nil {
 			ack.IsOACK = true
 			ack.Opcode = [] byte{0, 6}
-			supportedOptions, v6, sw, dp = parseOptions(w.Options)
+			supportedOptions, sw, dp = parseOptions(w.Options)
 			ack.Options = supportedOptions
 		}
 		if !ack.IsOACK {
@@ -71,7 +73,7 @@ func readPacket(conn *net.UDPConn) {
 				return
 			}
 		}
-		addToAuthenticatedClients(addr.String(), w.Filename, v6, sw, dp)
+		addToAuthenticatedClients(addr.String(), w.Filename, sw, dp)
 		errorPacket, hasError := checkFileExists(getFileNameForAddress(addr.String()))
 		if hasError {
 			sendPacketToClient(conn, addr, errorPacket)
@@ -98,15 +100,11 @@ func readPacket(conn *net.UDPConn) {
 		sendPacketToClient(conn, addr, createErrorPacket(shared.Error0, fmt.Sprintf("Server only supports Opcodes of 2,3, 5, and 6...not: %d", data[1])))
 	}
 
-	if client != nil {
-		if client.DropPackets {
-			if rand.Float64() > 0.01 {
-				sendPacketToClient(conn, addr, ack.ByteArray())
-			} else {
-				fmt.Println("Packet dropped...")
-			}
-		} else {
+	if dp {
+		if rand.Float64() > 0.01 {
 			sendPacketToClient(conn, addr, ack.ByteArray())
+		} else {
+			fmt.Println("Packet dropped...")
 		}
 	} else {
 		sendPacketToClient(conn, addr, ack.ByteArray())
@@ -143,10 +141,10 @@ func writeToFile(fileName string, data []byte) (eData [] byte, hasError bool) {
 	return nil, false
 }
 
-func addToAuthenticatedClients(addr string, fileName string, v6 bool, sw bool, dp bool) {
+func addToAuthenticatedClients(addr string, fileName string, sw bool, dp bool) {
 	hasBeenAdded := checkAuthenticatedClient(addr)
 	if !hasBeenAdded {
-		connectedClients[addr] = &ConnectedClient{FileName: fileName, IPv6: v6, SlidingWindow: sw, DropPackets: dp}
+		connectedClients[addr] = &ConnectedClient{FileName: fileName, SlidingWindow: sw}
 	}
 }
 
@@ -176,12 +174,10 @@ func createErrorPacket(errorCode [] byte, errorMessage string) [] byte {
 }
 
 func initializeOptions() {
-	availableOptions["packetMode"] = "ipv6"
 	availableOptions["sendMode"] = "sw"
-	availableOptions["simulation"] = "dp"
 }
 
-func parseOptions(oackPacketOptions map[string]string) (map[string]string, bool, bool, bool) {
+func parseOptions(oackPacketOptions map[string]string) (map[string]string, bool, bool) {
 	var supportedOptions = make(map[string]string)
 
 	for k, v := range availableOptions {
@@ -190,9 +186,8 @@ func parseOptions(oackPacketOptions map[string]string) (map[string]string, bool,
 		}
 	}
 
-	v6 := oackPacketOptions["packetMode"] == "ipv6"
 	sw := oackPacketOptions["sendMode"] == "sw"
 	dp := oackPacketOptions["simulation"] == "dp"
 
-	return supportedOptions, v6, sw, dp
+	return supportedOptions, sw, dp
 }

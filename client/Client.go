@@ -9,7 +9,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
@@ -18,10 +17,13 @@ var totalBytesSent int64
 var totalPacketsSent int
 var totalPacketsToSend int
 var packetsLost int
-var packetsToDrop [] int
+
+var v6 bool
+var sw bool
 
 func main() {
-	options := getCommandLineArguments(os.Args)
+	v6, sw, _ = shared.InterpretCommandLineArguments(os.Args, true)
+	options := createOptions(sw)
 
 	var serverAddress string = "127.0.0.1"
 	//fmt.Print("Server address: ")
@@ -47,7 +49,7 @@ func main() {
 
 	defer file.Close()
 
-	sendWRQPacket(conn, filepath.Base(file.Name()), options)
+	sendWRQPacket(conn, filepath.Base(file.Name()), options) // TODO: Change this to work with new way for options
 
 	readFile(conn, file)
 }
@@ -177,48 +179,11 @@ func determineAmountOfPacketsToSend(fileSize int64) int { // yes the last packet
 	return int(math.Ceil(float64(fileSize) / 512))
 }
 
-// Interprets command line arguments for the program
-func getCommandLineArguments(args [] string) map[string]string {
+func createOptions(isSW bool) map[string]string {
 	options := make(map[string]string)
-	builder := strings.Builder{}
-
-	if len(args[1:]) > 0 {
-		builder.WriteString("Options specified: ")
-
-		for _, arg := range args[1:] {
-			switch arg {
-			case "--ipv6":
-				options["packetMode"] = "ipv6"
-				builder.WriteString(" IPv6 |")
-				break
-			case "--sw":
-				options["sendMode"] = "sw"
-				builder.WriteString(" Sliding Window Mode |")
-				break
-			case "--dp":
-				options["simulation"] = "dp"
-				builder.WriteString(" Drop Packets Simulation |")
-				break
-			case "-h":
-				showHelp()
-				os.Exit(0)
-			default:
-				builder.WriteString(" " + arg + " (not supported) |")
-			}
-		}
-
-		fmt.Println(builder.String())
-		return options
-	} else {
-		fmt.Println("Default Options: IPv4 | Sequential Acks Mode | No Simulation")
-		return nil
+	if isSW {
+		options["packetMode"] = "sw"
 	}
-}
 
-func showHelp() {
-	fmt.Println("usage: ./fileTransferring [<options>]")
-	fmt.Println()
-	fmt.Printf("\t--ipv6\t\t %s\n", "Specify if packets are IPv6 UDP datagrams instead of IPv4 packets")
-	fmt.Printf("\t--sw\t\t %s\n", "Specify use of TCP-style sliding windows rather than the sequential acks used in TFTP")
-	fmt.Printf("\t--dp\t\t %s\n\n", "Pretend to drop 1% of packets")
+	return options
 }
