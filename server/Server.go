@@ -3,6 +3,7 @@ package main
 import (
 	"fileTransferring/shared"
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
 	"strings"
@@ -11,12 +12,15 @@ import (
 
 // TODO: Need to timeout users that authenticated after a certain amount of time, even if we did not get the full file
 
-var connectedClients = make(map[string]string)
+var connectedClients = make(map[string]*ConnectedClient)
 var availableOptions = make(map[string]string)
 
 type ConnectedClient struct {
-	FileName string
-	Options  map[string]string
+	FileName            string
+	IPv6                bool
+	SlidingWindow       bool
+	LastSeenBlockNumber [] byte // this is only for sliding window
+	DropPackets         bool
 }
 
 func main() {
@@ -39,29 +43,35 @@ func main() {
 func readPacket(conn *net.UDPConn) {
 	data := make([]byte, 516)
 	bytesReceived, addr, err := conn.ReadFromUDP(data)
+	var client *ConnectedClient
+	if checkAuthenticatedClient(addr.String()) { // know which client we are working with for options
+		client = connectedClients[addr.String()]
+	}
 	data = data[:bytesReceived]
 	utils.ErrorCheck(err)
-	t := data[1]
-
 	ack := shared.CreateACKPacket()
 
-	switch t {
+	switch data[1] {
 	case 2:
 		fmt.Println("WRQ packet has been received...")
 		w, _ := shared.ReadRRQWRQPacket(data)
+
+		var supportedOptions map[string]string
+		var v6, sw, dp bool
+
 		if w.Options != nil {
 			ack.IsOACK = true
 			ack.Opcode = [] byte{0, 6}
-			supportedOptions := parseOptions(w.Options)
+			supportedOptions, v6, sw, dp = parseOptions(w.Options)
 			ack.Options = supportedOptions
 		}
-		if strings.ToLower(w.Mode) != "octet" {
-			if !ack.IsOACK {
+		if !ack.IsOACK {
+			if strings.ToLower(w.Mode) != "octet" {
 				sendPacketToClient(conn, addr, createErrorPacket(shared.Error0, "This server only supports octet mode, not: "+w.Mode))
 				return
 			}
 		}
-		addToAuthenticatedClients(addr.String(), w.Filename)
+		addToAuthenticatedClients(addr.String(), w.Filename, v6, sw, dp)
 		errorPacket, hasError := checkFileExists(getFileNameForAddress(addr.String()))
 		if hasError {
 			sendPacketToClient(conn, addr, errorPacket)
@@ -71,7 +81,7 @@ func readPacket(conn *net.UDPConn) {
 			ack.BlockNumber = []byte{0, 0}
 		}
 	case 3:
-		if checkAuthenticatedClient(addr.String()) {
+		if client != nil {
 			d, _ := shared.ReadDataPacket(data)
 			errorPacket, hasError := writeToFile(getFileNameForAddress(addr.String()), d.Data)
 			if hasError {
@@ -85,10 +95,22 @@ func readPacket(conn *net.UDPConn) {
 			sendPacketToClient(conn, addr, createErrorPacket(shared.Error0, fmt.Sprintf("Client has not sent a WRQ Packet, permission denied")))
 		}
 	default:
-		sendPacketToClient(conn, addr, createErrorPacket(shared.Error0, fmt.Sprintf("Server only supports Opcodes of 2,3, 5, and 6...not: %d", t)))
+		sendPacketToClient(conn, addr, createErrorPacket(shared.Error0, fmt.Sprintf("Server only supports Opcodes of 2,3, 5, and 6...not: %d", data[1])))
 	}
 
-	sendPacketToClient(conn, addr, ack.ByteArray())
+	if client != nil {
+		if client.DropPackets {
+			if rand.Float64() > 0.01 {
+				sendPacketToClient(conn, addr, ack.ByteArray())
+			} else {
+				fmt.Println("Packet dropped...")
+			}
+		} else {
+			sendPacketToClient(conn, addr, ack.ByteArray())
+		}
+	} else {
+		sendPacketToClient(conn, addr, ack.ByteArray())
+	}
 }
 
 func sendPacketToClient(conn *net.UDPConn, addr *net.UDPAddr, data [] byte) {
@@ -121,10 +143,10 @@ func writeToFile(fileName string, data []byte) (eData [] byte, hasError bool) {
 	return nil, false
 }
 
-func addToAuthenticatedClients(addr string, fileName string) {
+func addToAuthenticatedClients(addr string, fileName string, v6 bool, sw bool, dp bool) {
 	hasBeenAdded := checkAuthenticatedClient(addr)
 	if !hasBeenAdded {
-		connectedClients[addr] = fileName
+		connectedClients[addr] = &ConnectedClient{FileName: fileName, IPv6: v6, SlidingWindow: sw, DropPackets: dp}
 	}
 }
 
@@ -138,7 +160,7 @@ func removeAuthenticatedClient(toRemove string) {
 }
 
 func getFileNameForAddress(addressToGet string) string {
-	return connectedClients[addressToGet]
+	return connectedClients[addressToGet].FileName
 }
 
 func checkEndOfTransfer(data [] byte, addressToRemove string) {
@@ -159,7 +181,7 @@ func initializeOptions() {
 	availableOptions["simulation"] = "dp"
 }
 
-func parseOptions(oackPacketOptions map[string]string) map[string]string {
+func parseOptions(oackPacketOptions map[string]string) (map[string]string, bool, bool, bool) {
 	var supportedOptions = make(map[string]string)
 
 	for k, v := range availableOptions {
@@ -168,5 +190,9 @@ func parseOptions(oackPacketOptions map[string]string) map[string]string {
 		}
 	}
 
-	return supportedOptions
+	v6 := oackPacketOptions["packetMode"] == "ipv6"
+	sw := oackPacketOptions["sendMode"] == "sw"
+	dp := oackPacketOptions["simulation"] == "dp"
+
+	return supportedOptions, v6, sw, dp
 }
