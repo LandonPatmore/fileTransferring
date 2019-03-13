@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"tideWatchAPI/utils"
+	"time"
 )
 
 // TODO: Need to timeout users that authenticated after a certain amount of time, even if we did not get the full file
@@ -19,9 +20,10 @@ var v6 bool
 var dp bool
 
 type ConnectedClient struct {
-	FileName            string
-	SlidingWindow       bool
-	LastSeenBlockNumber [] byte // this is only for sliding window
+	FileName               string
+	LastTimePacketReceived int64
+	SlidingWindow          bool
+	LastSeenBlockNumber    [] byte // this is only for sliding window
 }
 
 func main() {
@@ -46,8 +48,15 @@ func readPacket(conn *net.UDPConn) {
 	data := make([]byte, 516)
 	bytesReceived, addr, err := conn.ReadFromUDP(data)
 	var client *ConnectedClient
-	if checkAuthenticatedClient(addr.String()) { // know which client we are working with for options
-		client = connectedClients[addr.String()]
+	if checkAuthenticatedClient(addr.IP.String()) { // know which client we are working with for options
+		client = connectedClients[addr.IP.String()]
+		hasTimedOut := checkIfHasTimedOut(addr.IP.String())
+
+		if hasTimedOut {
+			sendPacketToClient(conn, addr, createErrorPacket(shared.Error0, "This client has timed out.  Please start the transfer again."))
+			removeAuthenticatedClient(addr.IP.String())
+			return
+		}
 	}
 	data = data[:bytesReceived]
 	utils.ErrorCheck(err)
@@ -59,7 +68,7 @@ func readPacket(conn *net.UDPConn) {
 		w, _ := shared.ReadRRQWRQPacket(data)
 
 		var supportedOptions map[string]string
-		var sw, dp bool
+		var sw, _ bool
 
 		if w.Options != nil {
 			ack.IsOACK = true
@@ -73,11 +82,11 @@ func readPacket(conn *net.UDPConn) {
 				return
 			}
 		}
-		addToAuthenticatedClients(addr.String(), w.Filename, sw, dp)
-		errorPacket, hasError := checkFileExists(getFileNameForAddress(addr.String()))
+		addToAuthenticatedClients(addr.IP.String(), w.Filename, sw)
+		errorPacket, hasError := checkFileExists(getFileNameForAddress(addr.IP.String()))
 		if hasError {
 			sendPacketToClient(conn, addr, errorPacket)
-			removeAuthenticatedClient(addr.String())
+			removeAuthenticatedClient(addr.IP.String())
 			return
 		} else {
 			ack.BlockNumber = []byte{0, 0}
@@ -85,12 +94,12 @@ func readPacket(conn *net.UDPConn) {
 	case 3:
 		if client != nil {
 			d, _ := shared.ReadDataPacket(data)
-			errorPacket, hasError := writeToFile(getFileNameForAddress(addr.String()), d.Data)
+			errorPacket, hasError := writeToFile(getFileNameForAddress(addr.IP.String()), d.Data)
 			if hasError {
 				sendPacketToClient(conn, addr, errorPacket)
 				return
 			} else {
-				checkEndOfTransfer(d.Data, addr.String())
+				checkEndOfTransfer(d.Data, addr.IP.String())
 				ack.BlockNumber = d.BlockNumber
 			}
 		} else {
@@ -141,10 +150,10 @@ func writeToFile(fileName string, data []byte) (eData [] byte, hasError bool) {
 	return nil, false
 }
 
-func addToAuthenticatedClients(addr string, fileName string, sw bool, dp bool) {
+func addToAuthenticatedClients(addr string, fileName string, sw bool) {
 	hasBeenAdded := checkAuthenticatedClient(addr)
 	if !hasBeenAdded {
-		connectedClients[addr] = &ConnectedClient{FileName: fileName, SlidingWindow: sw}
+		connectedClients[addr] = &ConnectedClient{FileName: fileName, SlidingWindow: sw, LastTimePacketReceived: time.Now().UnixNano()}
 	}
 }
 
@@ -190,4 +199,11 @@ func parseOptions(oackPacketOptions map[string]string) (map[string]string, bool,
 	dp := oackPacketOptions["simulation"] == "dp"
 
 	return supportedOptions, sw, dp
+}
+
+func checkIfHasTimedOut(toCheck string) bool {
+	var client = connectedClients[toCheck]
+	var currentTime = time.Now().UnixNano()
+
+	return ((currentTime - client.LastTimePacketReceived) / 1e9) > 10
 }
