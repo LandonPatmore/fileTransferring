@@ -1,2 +1,2 @@
 # fileTransferring
-File transferring conforming to the TFTP (RFC-1350) protocol with some modifications
+File transferring conforming to the TFTP (RFC-1350) and TFTP Option Extension (RFC-2347) protocols with some modifications
