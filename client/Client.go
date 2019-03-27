@@ -102,7 +102,7 @@ func sendDataPacket(conn *net.UDPConn, data *[] byte, currentPacket *int) {
 
 	totalBytesSent += int64(len(dataPacket.Data))
 	totalPacketsSent++
-	displayProgressBar()
+	displayProgress()
 
 	sendPacket(conn, d, dataPacket.BlockNumber)
 }
@@ -114,10 +114,7 @@ func receivePacket(data [] byte, blockNumber [] byte) error {
 	switch t {
 	case 4:
 		ack, _ := shared.ReadACKPacket(data)
-		if ack.Options != nil {
-			// TODO: Do something with the options returned by the server
-			return nil
-		} else if shared.CheckByteArrayEquality(ack.BlockNumber, blockNumber) {
+		if shared.CheckByteArrayEquality(ack.BlockNumber, blockNumber) {
 			return nil
 		}
 		return errors.New("Block numbers do not match...")
@@ -129,7 +126,7 @@ func receivePacket(data [] byte, blockNumber [] byte) error {
 		fmt.Println(oack)
 		return nil
 	default:
-		return errors.New(fmt.Sprintf("Client can only read Opcodes of 4 and 5...not: %d", t))
+		return errors.New(fmt.Sprintf("Client can only read Opcodes of 4, 5, and 6...not: %d", t))
 	}
 }
 
@@ -152,7 +149,7 @@ func sendPacket(conn *net.UDPConn, data []byte, blockNumber [] byte) {
 			return
 		} else {
 			packetsLost++
-			displayProgressBar()
+			displayProgress()
 		}
 	}
 
@@ -168,7 +165,7 @@ func handleReadTimeout(conn *net.UDPConn) ([] byte, error) {
 	return receivedData[:bytesReceived], timedOut
 }
 
-func displayProgressBar() {
+func displayProgress() {
 	var totalDataSent = math.Floor(float64(totalBytesSent) / float64(fileSize) * 100)
 
 	fmt.Print("\r")

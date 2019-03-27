@@ -73,7 +73,7 @@ func readPacket(conn *net.UDPConn) {
 		if w.Options != nil {
 			ack.IsOACK = true
 			ack.Opcode = [] byte{0, 6}
-			supportedOptions, sw, dp = parseOptions(w.Options)
+			supportedOptions, sw = parseOptions(w.Options)
 			ack.Options = supportedOptions
 		}
 		if !ack.IsOACK {
@@ -186,7 +186,7 @@ func initializeOptions() {
 	availableOptions["sendMode"] = "sw"
 }
 
-func parseOptions(oackPacketOptions map[string]string) (map[string]string, bool, bool) {
+func parseOptions(oackPacketOptions map[string]string) (map[string]string, bool) {
 	var supportedOptions = make(map[string]string)
 
 	for k, v := range availableOptions {
@@ -196,9 +196,8 @@ func parseOptions(oackPacketOptions map[string]string) (map[string]string, bool,
 	}
 
 	sw := oackPacketOptions["sendMode"] == "sw"
-	dp := oackPacketOptions["simulation"] == "dp"
 
-	return supportedOptions, sw, dp
+	return supportedOptions, sw
 }
 
 func checkIfHasTimedOut(toCheck string) bool {
