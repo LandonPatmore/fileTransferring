@@ -2,6 +2,7 @@ package shared
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strings"
 )
@@ -9,13 +10,22 @@ import (
 // Checks if there are any errors panics if there are
 func ErrorValidation(err error) {
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(-1)
+		log.Panic(err)
 	}
 }
 
-func CheckByteArrayEquality(byte1 [] byte, byte2 [] byte) bool {
-	return len(byte1) == len(byte2)
+func BlockNumberChecker(block1 [] byte, block2 [] byte) bool {
+	if len(block1) == len(block2) {
+		for index, v := range block1 {
+			if v != block2[index] {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	return false
 }
 
 // Interprets command line arguments for the program
@@ -39,7 +49,13 @@ func InterpretCommandLineArguments(args [] string, isClient bool) (bool, bool, b
 					builder.WriteString(" Sliding Window Mode |")
 					slidingWindow = true
 					break
+				case "--dp":
+					builder.WriteString(" Drop Packets Simulation |")
+					dropPackets = true
+					break
 				case "-h":
+					fallthrough
+				case "--help":
 					showHelp(isClient)
 					os.Exit(0)
 				default:
@@ -52,11 +68,9 @@ func InterpretCommandLineArguments(args [] string, isClient bool) (bool, bool, b
 					builder.WriteString(" IPv6 Mode |")
 					ipv6 = true
 					break
-				case "--dp":
-					builder.WriteString(" Drop Packets Simulation |")
-					dropPackets = true
-					break
 				case "-h":
+					fallthrough
+				case "--help":
 					showHelp(isClient)
 					os.Exit(0)
 				default:
@@ -66,12 +80,13 @@ func InterpretCommandLineArguments(args [] string, isClient bool) (bool, bool, b
 			}
 		}
 
-		fmt.Println(builder.String())
+		strippedVersion := builder.String()[:len(builder.String())-1]
+		fmt.Println(strippedVersion)
 	} else {
 		if isClient {
-			fmt.Println("Default Options: IPv4 Mode | Sequential Acks Mode")
+			fmt.Println("Default Options: IPv4 Mode | Sequential Acks Mode | No Drop Packets Simulation")
 		} else {
-			fmt.Println("Default Options: IPv4 Mode | No Drop Packets Simulation")
+			fmt.Println("Default Option: IPv4 Mode")
 		}
 	}
 

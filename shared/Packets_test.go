@@ -9,7 +9,7 @@ func TestCreateRRQWRQPacket1(t *testing.T) {
 
 	packet := CreateRRQWRQPacket(true, testFile, nil)
 
-	if !CheckByteArrayEquality(packet.Opcode, opCode) {
+	if !BlockNumberChecker(packet.Opcode, opCode) {
 		t.Errorf("Got = %v; want %v", packet.Opcode, opCode)
 	}
 
@@ -31,7 +31,7 @@ func TestCreateRRQWRQPacket2(t *testing.T) {
 
 	packet := CreateRRQWRQPacket(false, "test.txt", nil)
 
-	if !CheckByteArrayEquality(packet.Opcode, opCode) {
+	if !BlockNumberChecker(packet.Opcode, opCode) {
 		t.Errorf("Got = %v; want %v", packet.Opcode, opCode)
 	}
 }
@@ -49,9 +49,9 @@ func TestCreateRRQWRQPacket3(t *testing.T) {
 }
 
 func TestCreateDataPacket(t *testing.T) {
-	packet := CreateDataPacket()
+	packet := CreateDataPacket([]byte{}, []byte{})
 
-	if !CheckByteArrayEquality(packet.Opcode, []byte{0, 3}) {
+	if !BlockNumberChecker(packet.Opcode, []byte{0, 3}) {
 		t.Errorf("Got = %v; want [0 3]", packet.Opcode)
 	}
 
@@ -63,7 +63,7 @@ func TestCreateDataPacket(t *testing.T) {
 func TestCreateACKPacket(t *testing.T) {
 	packet := CreateACKPacket()
 
-	if !CheckByteArrayEquality(packet.Opcode, []byte{0, 4}) {
+	if !BlockNumberChecker(packet.Opcode, []byte{0, 4}) {
 		t.Errorf("Got = %v; want [0 4]", packet.Opcode)
 	}
 }

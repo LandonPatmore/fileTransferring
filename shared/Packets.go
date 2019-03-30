@@ -61,11 +61,12 @@ func CreateRRQWRQPacket(isRRQ bool, fileName string, options map[string]string) 
 }
 
 // Creates a Data Packet
-func CreateDataPacket() *DataPacket {
+func CreateDataPacket(blockNumber [] byte, data [] byte) *DataPacket {
 	var d DataPacket
 
 	d.Opcode = []byte{0, 3}
-	d.Data = make([]byte, 0, 512)
+	d.BlockNumber = blockNumber
+	d.Data = data
 
 	return &d
 }
@@ -162,9 +163,9 @@ func ReadRRQWRQPacket(data []byte) (p *RRQWRQPacket, err error) {
 	var packetBytes [] ArrayBytesHelper
 	for index, b := range data[2:] {
 		if b == 0 {
-			bytes := data[lastZeroSeen : index+2]
+			dataBytes := data[lastZeroSeen : index+2]
 			lastZeroSeen = index + 3
-			packetBytes = append(packetBytes, ArrayBytesHelper{bytes})
+			packetBytes = append(packetBytes, ArrayBytesHelper{dataBytes})
 		}
 	}
 
