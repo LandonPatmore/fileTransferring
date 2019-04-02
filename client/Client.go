@@ -63,8 +63,8 @@ func sendFile(conn *net.UDPConn, fileBytes [] byte) {
 		sendFile(conn, fileBytes[512:])
 	} else { // at end of file
 		sendDataPacket(conn, fileBytes, &currentPacket)
+		fmt.Println("\nDone reading and sending file...")
 	}
-	fmt.Println("\nDone reading and sending file...")
 }
 
 // Creates and sends a WRQ packet
@@ -84,7 +84,7 @@ func sendDataPacket(conn *net.UDPConn, data [] byte, currentPacket *int) {
 }
 
 // Receives a packet and does something with it based on the opcode
-func receivePacket(data [] byte, blockNumber [] byte) error {
+func readPacket(data [] byte, blockNumber [] byte) error {
 	opcode := data[1]
 
 	switch opcode {
@@ -122,7 +122,7 @@ func send(conn *net.UDPConn, data []byte, blockNumber [] byte) {
 		_, _ = conn.Write(data)
 		receivedData, err := handleReadTimeout(conn)
 		if err == nil {
-			err := receivePacket(receivedData, blockNumber)
+			err := readPacket(receivedData, blockNumber)
 			shared.ErrorValidation(err)
 			return
 		} else {

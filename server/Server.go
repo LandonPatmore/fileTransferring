@@ -3,13 +3,15 @@ package main
 import (
 	"fileTransferring/shared"
 	"fmt"
+	"io/ioutil"
 	"net"
+	"net/http"
 	"os"
 	"strings"
 	"tideWatchAPI/utils"
 )
 
-// TODO: Need to timeout users that authenticated after a certain amount of time, even if we did not get the full file
+var filename string // this server will only handle one connection at a time, so we just set this variable each time a new WRQ packet comes int
 
 func main() {
 	ServerAddr, err := net.ResolveUDPAddr("udp", shared.PORT)
@@ -21,14 +23,14 @@ func main() {
 
 	fmt.Println("Server started...")
 
-	var filename string // this server will only handle one connection at a time, so we just set this variable each time a new WRQ packet comes int
+	displayExternalIP()
 
 	for {
-		readConnection(conn, &filename)
+		readPacket(conn)
 	}
 }
 
-func readConnection(conn *net.UDPConn, filename *string) {
+func readPacket(conn *net.UDPConn) {
 	data := make([]byte, 516)
 
 	amountOfBytes, addr, err := conn.ReadFromUDP(data)
@@ -41,7 +43,7 @@ func readConnection(conn *net.UDPConn, filename *string) {
 		fmt.Println("WRQ packet has been received...")
 		w, _ := shared.ReadRRQWRQPacket(data)
 
-		*filename = w.Filename
+		filename = w.Filename
 
 		if !ack.IsOACK {
 			if strings.ToLower(w.Mode) != "octet" {
@@ -50,7 +52,7 @@ func readConnection(conn *net.UDPConn, filename *string) {
 			}
 		}
 
-		errorPacket, hasError := checkFileExists(*filename)
+		errorPacket, hasError := checkFileExists(filename)
 
 		if hasError {
 			sendPacketToClient(conn, addr, errorPacket)
@@ -60,7 +62,7 @@ func readConnection(conn *net.UDPConn, filename *string) {
 		}
 	case 3:
 		d, _ := shared.ReadDataPacket(data)
-		errorPacket, hasError := writeToFile(*filename, d.Data)
+		errorPacket, hasError := writeToFile(filename, d.Data)
 		if hasError {
 			sendPacketToClient(conn, addr, errorPacket)
 			return
@@ -69,7 +71,7 @@ func readConnection(conn *net.UDPConn, filename *string) {
 			ack.BlockNumber = d.BlockNumber
 		}
 	default:
-		sendPacketToClient(conn, addr, shared.CreateErrorPacket(shared.Error0, fmt.Sprintf("Server only supports Opcodes of 2,3, 5, and 6...not: %d", data[1])).ByteArray())
+		sendPacketToClient(conn, addr, createErrorPacket(shared.Error0, fmt.Sprintf("Server only supports Opcodes of 2,3, 5, and 6...not: %d", data[1])))
 	}
 
 	sendPacketToClient(conn, addr, ack.ByteArray())
@@ -86,20 +88,20 @@ func checkFileExists(fileName string) (ePacket [] byte, hasError bool) {
 		return nil, false
 	}
 
-	return shared.CreateErrorPacket(shared.Error6, shared.Error6Message).ByteArray(), true
+	return createErrorPacket(shared.Error6, shared.Error6Message), true
 }
 
 func writeToFile(fileName string, data []byte) (eData [] byte, hasError bool) {
 	f, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 
 	if err != nil {
-		return shared.CreateErrorPacket(shared.Error0, err.Error()).ByteArray(), true
+		return createErrorPacket(shared.Error0, err.Error()), true
 	}
 	if _, err := f.Write(data); err != nil {
-		return shared.CreateErrorPacket(shared.Error0, err.Error()).ByteArray(), true
+		return createErrorPacket(shared.Error0, err.Error()), true
 	}
 	if err := f.Close(); err != nil {
-		return shared.CreateErrorPacket(shared.Error0, err.Error()).ByteArray(), true
+		return createErrorPacket(shared.Error0, err.Error()), true
 	}
 
 	return nil, false
@@ -114,4 +116,16 @@ func checkEndOfTransfer(data [] byte) {
 func createErrorPacket(errorCode [] byte, errorMessage string) [] byte {
 	ePacket := shared.CreateErrorPacket(errorCode, errorMessage)
 	return ePacket.ByteArray()
+}
+
+func displayExternalIP() {
+	resp, err := http.Get("http://myexternalip.com/raw")
+
+	defer resp.Body.Close()
+
+	utils.ErrorCheck(err)
+	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	utils.ErrorCheck(err)
+	bodyString := string(bodyBytes)
+	fmt.Println("External IP: " + bodyString)
 }
