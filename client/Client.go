@@ -1,10 +1,10 @@
 package main
 
 import (
-	"bufio"
 	"fileTransferring/shared"
 	"fmt"
 	"github.com/pkg/errors"
+	"io/ioutil"
 	"math"
 	"net"
 	"os"
@@ -33,6 +33,11 @@ func main() {
 	fmt.Print("Enter full file path: ")
 	_, _ = fmt.Scanf("%s", &filePath)
 
+	fmt.Println("Buffering file...")
+	fileBytes, err := ioutil.ReadFile(filePath) // b has type []byte
+	shared.ErrorValidation(err)
+	fmt.Println("File Buffered!")
+
 	file, fileError := os.Open(filePath)
 	shared.ErrorValidation(fileError)
 
@@ -46,42 +51,20 @@ func main() {
 
 	sendWRQPacket(conn, filepath.Base(file.Name()), nil) // TODO: Change this to work with new way for options
 
-	readFile(conn, file)
+	sendFile(conn, fileBytes)
 }
 
 // Reads a file and sends it to the server
-func readFile(conn *net.UDPConn, file *os.File) {
-	scanner := bufio.NewScanner(file)
-
-	var message = make([]byte, 0, 512)
+func sendFile(conn *net.UDPConn, fileBytes [] byte) {
 	var currentPacket int
-	for scanner.Scan() {
-		for _, character := range scanner.Bytes() {
-			addToDataPacket(conn, &message, character, &currentPacket)
-		}
-		addToDataPacket(conn, &message, '\n', &currentPacket)
+
+	if len(fileBytes) >= 512 {
+		sendDataPacket(conn, fileBytes[:512], &currentPacket)
+		sendFile(conn, fileBytes[512:])
+	} else { // at end of file
+		sendDataPacket(conn, fileBytes, &currentPacket)
 	}
-	message = message[:len(message)-1] // to remove the last \n
-	sendDataPacket(conn, &message, &currentPacket)
 	fmt.Println("\nDone reading and sending file...")
-}
-
-// Adds data to packet and sends the packet if the max size is reached
-func addToDataPacket(conn *net.UDPConn, message *[] byte, nextByteToAppend byte, currentPacket *int) {
-	if isMaxDataPacketSize(message) {
-		sendDataPacket(conn, message, currentPacket)
-		*message = make([]byte, 0, 512)
-	}
-	*message = append(*message, nextByteToAppend)
-}
-
-// Helper function to check if the size of the current packet
-// is at the max or not
-func isMaxDataPacketSize(message *[] byte) bool {
-	if len(*message) == 512 {
-		return true
-	}
-	return false
 }
 
 // Creates and sends a WRQ packet
@@ -91,8 +74,8 @@ func sendWRQPacket(conn *net.UDPConn, fileName string, options map[string]string
 }
 
 // Creates and sends a data packet
-func sendDataPacket(conn *net.UDPConn, data *[] byte, currentPacket *int) {
-	dataPacket := shared.CreateDataPacket(createBlockNumber(currentPacket), *data)
+func sendDataPacket(conn *net.UDPConn, data [] byte, currentPacket *int) {
+	dataPacket := shared.CreateDataPacket(createBlockNumber(currentPacket), data)
 	send(conn, dataPacket.ByteArray(), dataPacket.BlockNumber)
 
 	totalBytesSent += int64(len(dataPacket.Data))
