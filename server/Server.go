@@ -10,7 +10,6 @@ import (
 )
 
 // TODO: Need to timeout users that authenticated after a certain amount of time, even if we did not get the full file
-var availableOptions = make(map[string]string)
 
 func main() {
 	ServerAddr, err := net.ResolveUDPAddr("udp", shared.PORT)
@@ -66,7 +65,7 @@ func readConnection(conn *net.UDPConn, filename *string) {
 			sendPacketToClient(conn, addr, errorPacket)
 			return
 		} else {
-			checkEndOfTransfer(d.ByteArray())
+			checkEndOfTransfer(d.Data)
 			ack.BlockNumber = d.BlockNumber
 		}
 	default:
@@ -107,7 +106,7 @@ func writeToFile(fileName string, data []byte) (eData [] byte, hasError bool) {
 }
 
 func checkEndOfTransfer(data [] byte) {
-	if len(data) < 516 { // just check the size of the entire packet, we know it will always max out at 516
+	if len(data) < 512 { // although the packet is 516, 512 is the max for the data portion...anything smaller and we know it is the end of the file
 		fmt.Println("File has been fully transferred")
 	}
 }
