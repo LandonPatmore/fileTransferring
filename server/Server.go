@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"tideWatchAPI/utils"
 )
 
 var filename string // this server will only handle one connection at a time, so we just set this variable each time a new WRQ packet comes int
@@ -30,11 +29,12 @@ func main() {
 	}
 }
 
+// Reads the incoming packet and performs operations based on the packet received
 func readPacket(conn *net.UDPConn) {
 	data := make([]byte, 516)
 
 	amountOfBytes, addr, err := conn.ReadFromUDP(data)
-	utils.ErrorCheck(err)
+	shared.ErrorValidation(err)
 	data = data[:amountOfBytes]
 	ack := shared.CreateACKPacket()
 
@@ -77,10 +77,12 @@ func readPacket(conn *net.UDPConn) {
 	sendPacketToClient(conn, addr, ack.ByteArray())
 }
 
+// Sends the packet to the client
 func sendPacketToClient(conn *net.UDPConn, addr *net.UDPAddr, data [] byte) {
 	_, _ = conn.WriteToUDP(data, addr)
 }
 
+// Checks if a file exists and returns an error if so
 func checkFileExists(fileName string) (ePacket [] byte, hasError bool) {
 	_, err := os.Stat(fileName)
 
@@ -91,6 +93,7 @@ func checkFileExists(fileName string) (ePacket [] byte, hasError bool) {
 	return createErrorPacket(shared.Error6, shared.Error6Message), true
 }
 
+// Writes to a file and returns an error if it cannot write to that specific file
 func writeToFile(fileName string, data []byte) (eData [] byte, hasError bool) {
 	f, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 
@@ -107,25 +110,28 @@ func writeToFile(fileName string, data []byte) (eData [] byte, hasError bool) {
 	return nil, false
 }
 
+// Checks the end of the file transfer based on the data portion of the packet
 func checkEndOfTransfer(data [] byte) {
 	if len(data) < 512 { // although the packet is 516, 512 is the max for the data portion...anything smaller and we know it is the end of the file
 		fmt.Println("File has been fully transferred")
 	}
 }
 
+// Helper to create an error packet
 func createErrorPacket(errorCode [] byte, errorMessage string) [] byte {
 	ePacket := shared.CreateErrorPacket(errorCode, errorMessage)
 	return ePacket.ByteArray()
 }
 
+// Displays the external IP of the running server
 func displayExternalIP() {
 	resp, err := http.Get("http://myexternalip.com/raw")
 
 	defer resp.Body.Close()
 
-	utils.ErrorCheck(err)
+	shared.ErrorValidation(err)
 	bodyBytes, err := ioutil.ReadAll(resp.Body)
-	utils.ErrorCheck(err)
+	shared.ErrorValidation(err)
 	bodyString := string(bodyBytes)
 	fmt.Println("External IP: " + bodyString)
 }
