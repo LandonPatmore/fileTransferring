@@ -45,12 +45,12 @@ func readPacket(conn *net.UDPConn) {
 
 		filename = w.Filename
 
-		if !ack.IsOACK {
+		//if !ack.IsOACK { // TODO: Need to be able to determine if the WRQ has options attached
 			if strings.ToLower(w.Mode) != "octet" {
 				sendPacketToClient(conn, addr, createErrorPacket(shared.Error0, "This server only supports octet mode, not: "+w.Mode))
 				return
 			}
-		}
+		//}
 
 		errorPacket, hasError := checkFileExists(filename)
 

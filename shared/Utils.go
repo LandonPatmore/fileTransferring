@@ -30,7 +30,7 @@ func BlockNumberChecker(block1 [] byte, block2 [] byte) bool {
 }
 
 // Interprets command line arguments for the program
-func InterpretCommandLineArguments(args [] string, isClient bool) (bool, bool, bool) {
+func GetCMDArgs(args [] string, isClient bool) (bool, bool, bool) {
 	var ipv6 bool
 	var slidingWindow bool
 	var dropPackets bool

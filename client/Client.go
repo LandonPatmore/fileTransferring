@@ -6,6 +6,7 @@ import (
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"math"
+	"math/rand"
 	"net"
 	"os"
 	"path/filepath"
@@ -17,6 +18,9 @@ var totalBytesSent int64
 var totalPacketsSent int
 var totalPacketsToSend int
 var packetsLost int
+var packetsToDrop [] int
+
+var ipv6, sw, dp = shared.GetCMDArgs(os.Args, true)
 
 func main() {
 	var serverAddress string
@@ -34,7 +38,7 @@ func main() {
 	_, _ = fmt.Scanf("%s", &filePath)
 
 	fmt.Println("Buffering file...")
-	fileBytes, err := ioutil.ReadFile(filePath) // b has type []byte
+	fileBytes, err := ioutil.ReadFile(filePath)
 	shared.ErrorValidation(err)
 	fmt.Println("File Buffered!")
 
@@ -46,6 +50,10 @@ func main() {
 	fileSize = fi.Size()
 
 	totalPacketsToSend = determineAmountOfPacketsToSend(fileSize)
+
+	if dp {
+		determinePacketsToDrop()
+	}
 
 	defer file.Close()
 
@@ -119,7 +127,9 @@ func createBlockNumber(currentPacketNumber *int) [] byte {
 // Sends the packet to the server
 func send(conn *net.UDPConn, data []byte, blockNumber [] byte) {
 	for i := 0; i < 10; i++ {
-		_, _ = conn.Write(data)
+		if !shouldDropPacket() {
+			_, _ = conn.Write(data)
+		}
 		receivedData, err := handleReadTimeout(conn)
 		if err == nil {
 			err := readPacket(receivedData, blockNumber)
@@ -157,4 +167,44 @@ func displayProgress() {
 // completely
 func determineAmountOfPacketsToSend(fileSize int64) int { // yes the last packet will be smaller, but we don't care
 	return int(math.Ceil(float64(fileSize) / 512))
+}
+
+// Randomly choose which packets to drop
+func determinePacketsToDrop() {
+	var onePercentOfPacketsToDrop = int(math.Ceil(float64(totalPacketsToSend) * 0.01))
+
+	for {
+		if len(packetsToDrop) < onePercentOfPacketsToDrop {
+			duplicate := false
+			packetToDrop := rand.Intn(totalPacketsToSend)
+
+			for _, packetNumber := range packetsToDrop {
+				if packetToDrop == packetNumber {
+					duplicate = true
+					break
+				}
+			}
+
+			if !duplicate {
+				packetsToDrop = append(packetsToDrop, packetToDrop)
+			}
+		} else {
+			fmt.Println("Packets to drop have been determined...")
+			break
+		}
+	}
+}
+
+// Figures out whether or not to drop the current packet
+func shouldDropPacket() bool {
+	if dp {
+		for index, packetToDrop := range packetsToDrop {
+			if totalPacketsSent == packetToDrop {
+				packetsToDrop = append(packetsToDrop[:index], packetsToDrop[index+1:]...)
+				return true
+			}
+		}
+	}
+
+	return false
 }

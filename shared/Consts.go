@@ -18,3 +18,5 @@ const Error6Message = "File already exists"
 const Error8Message = "Option value not supported"
 
 const PORT = ":8247"
+
+const START_WINDOW_SIZE = 1
