@@ -65,13 +65,16 @@ func main() {
 // Reads a file and sends it to the server
 func sendFile(conn *net.UDPConn, fileBytes [] byte) {
 	var currentPacket int
+	var bytesToSend = fileBytes
 
-	if len(fileBytes) >= 512 {
-		sendDataPacket(conn, fileBytes[:512], &currentPacket)
-		sendFile(conn, fileBytes[512:])
-	} else { // at end of file
-		sendDataPacket(conn, fileBytes, &currentPacket)
-		fmt.Println("\nDone reading and sending file...")
+	for {
+		if len(bytesToSend) >= 512 {
+			sendDataPacket(conn, fileBytes[:512], &currentPacket)
+			bytesToSend = bytesToSend[512:]
+		} else {
+			sendDataPacket(conn, bytesToSend, &currentPacket)
+			break
+		}
 	}
 }
 
@@ -88,7 +91,7 @@ func sendDataPacket(conn *net.UDPConn, data [] byte, currentPacket *int) {
 
 	totalBytesSent += int64(len(dataPacket.Data))
 	totalPacketsSent++
-	displayProgress()
+	//displayProgress()
 }
 
 // Receives a packet and does something with it based on the opcode
@@ -117,9 +120,6 @@ func readPacket(data [] byte, blockNumber [] byte) error {
 // Generates a block number based on the current packet number
 func createBlockNumber(currentPacketNumber *int) [] byte {
 	*currentPacketNumber++
-	if *currentPacketNumber < 256 {
-		return [] byte{0, byte(*currentPacketNumber)}
-	}
 	leadingByte := math.Floor(float64(*currentPacketNumber / 256))
 	return [] byte{byte(leadingByte), byte(*currentPacketNumber % 256)}
 }
