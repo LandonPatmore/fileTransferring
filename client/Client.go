@@ -68,8 +68,9 @@ func sendFile(conn *net.UDPConn, fileBytes [] byte) {
 	var bytesToSend = fileBytes
 
 	for {
+		fmt.Println(len(bytesToSend))
 		if len(bytesToSend) >= 512 {
-			sendDataPacket(conn, fileBytes[:512], &currentPacket)
+			sendDataPacket(conn, bytesToSend[:512], &currentPacket)
 			bytesToSend = bytesToSend[512:]
 		} else {
 			sendDataPacket(conn, bytesToSend, &currentPacket)
