@@ -3,6 +3,7 @@ package main
 import (
 	"fileTransferring/shared"
 	"fmt"
+	"github.com/mholt/archiver"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"math"
@@ -13,6 +14,10 @@ import (
 	"time"
 )
 
+const SendZipName = "receivedFiles.zip"
+
+var tempZipName string
+
 var fileSize int64
 var totalBytesSent int64
 var totalPacketsSent int
@@ -20,7 +25,7 @@ var totalPacketsToSend int
 var packetsLost int
 var packetsToDrop [] int
 
-var ipv6, sw, dp = shared.GetCMDArgs(os.Args,true)
+var ipv6, sw, dp = shared.GetCMDArgs(os.Args, true)
 
 func main() {
 	var serverAddress string
@@ -36,13 +41,15 @@ func main() {
 	var filePath string
 	fmt.Print("Enter full file path: ")
 	_, _ = fmt.Scanf("%s", &filePath)
+	zipError := zipFiles(filePath)
+	shared.ErrorValidation(zipError)
 
 	fmt.Println("Buffering file...")
-	fileBytes, err := ioutil.ReadFile(filePath)
+	fileBytes, err := ioutil.ReadFile(tempZipName)
 	shared.ErrorValidation(err)
 	fmt.Println("File Buffered!")
 
-	file, fileError := os.Open(filePath)
+	file, fileError := os.Open(tempZipName)
 	shared.ErrorValidation(fileError)
 
 	defer file.Close()
@@ -57,7 +64,7 @@ func main() {
 		determinePacketsToDrop()
 	}
 
-	sendWRQPacket(conn, filepath.Base(file.Name()), nil) // TODO: Change this to work with new way for options
+	sendWRQPacket(conn, SendZipName, nil) // TODO: Change this to work with new way for options
 
 	sendFile(conn, fileBytes)
 }
@@ -68,12 +75,13 @@ func sendFile(conn *net.UDPConn, fileBytes [] byte) {
 	var bytesToSend = fileBytes
 
 	for {
-		fmt.Println(len(bytesToSend))
 		if len(bytesToSend) >= 512 {
 			sendDataPacket(conn, bytesToSend[:512], &currentPacket)
 			bytesToSend = bytesToSend[512:]
 		} else {
 			sendDataPacket(conn, bytesToSend, &currentPacket)
+			err := os.Remove(tempZipName)
+			shared.ErrorValidation(err)
 			break
 		}
 	}
@@ -92,7 +100,7 @@ func sendDataPacket(conn *net.UDPConn, data [] byte, currentPacket *int) {
 
 	totalBytesSent += int64(len(dataPacket.Data))
 	totalPacketsSent++
-	//displayProgress()
+	displayProgress()
 }
 
 // Receives a packet and does something with it based on the opcode
@@ -208,4 +216,42 @@ func shouldDropPacket() bool {
 	}
 
 	return false
+}
+
+// Takes in a path and recursively goes down the directory tree and creates a zip to send to the server
+func zipFiles(path string) error {
+	generateTempZipName()
+
+	var filesToZip [] string
+
+	err := filepath.Walk(path,
+		func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			fi, err := os.Stat(path)
+			if err != nil {
+				return err
+			}
+			if fi.Mode().IsRegular() {
+				filesToZip = append(filesToZip, path)
+			}
+			return nil
+		})
+
+	if err != nil {
+		return err
+	}
+
+	return archiver.Archive(filesToZip, tempZipName)
+}
+
+// Generates a random name for temporary zip file
+func generateTempZipName() {
+	bytes := make([]byte, 10)
+	for i := 0; i < 10; i++ {
+		bytes[i] = byte(65 + rand.Intn(25))  //A=65 and Z = 65+25
+	}
+
+	tempZipName = string(bytes) + ".zip"
 }

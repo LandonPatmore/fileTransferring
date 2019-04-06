@@ -2,6 +2,7 @@ package shared
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strings"
 )
@@ -9,9 +10,7 @@ import (
 // Checks if there are any errors panics if there are
 func ErrorValidation(err error) {
 	if err != nil {
-		fmt.Println()
-		fmt.Println(err)
-		os.Exit(-1)
+		log.Panic(err)
 	}
 }
 
