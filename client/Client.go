@@ -20,7 +20,7 @@ var totalPacketsToSend int
 var packetsLost int
 var packetsToDrop [] int
 
-var ipv6, sw, dp = shared.GetCMDArgs(os.Args, true)
+var ipv6, sw, dp = shared.GetCMDArgs(os.Args,true)
 
 func main() {
 	var serverAddress string
@@ -45,6 +45,8 @@ func main() {
 	file, fileError := os.Open(filePath)
 	shared.ErrorValidation(fileError)
 
+	defer file.Close()
+
 	fi, err := file.Stat()
 	shared.ErrorValidation(err)
 	fileSize = fi.Size()
@@ -55,14 +57,12 @@ func main() {
 		determinePacketsToDrop()
 	}
 
-	defer file.Close()
-
 	sendWRQPacket(conn, filepath.Base(file.Name()), nil) // TODO: Change this to work with new way for options
 
 	sendFile(conn, fileBytes)
 }
 
-// Reads a file and sends it to the server
+// Sends a file to the server
 func sendFile(conn *net.UDPConn, fileBytes [] byte) {
 	var currentPacket int
 	var bytesToSend = fileBytes

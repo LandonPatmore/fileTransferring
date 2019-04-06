@@ -96,13 +96,13 @@ func GetCMDArgs(args [] string, isClient bool) (bool, bool, bool) {
 
 func showHelp(isClient bool) {
 	if isClient {
-		fmt.Println("usage: ./client [<options>]")
+		fmt.Println("usage: ./Client [<options>]")
 		fmt.Println()
 		fmt.Printf("\t--ipv6\t\t %s\n", "Specify to start client in IPv4 or IPv6 mode")
 		fmt.Printf("\t--sw\t\t %s\n", "Specify use of TCP-style sliding windows rather than the sequential acks used in TFTP")
 		fmt.Printf("\t--dp\t\t %s\n\n", "Pretend to drop 1% of packets")
 	} else {
-		fmt.Println("usage: ./server [<options>]")
+		fmt.Println("usage: ./Server [<options>]")
 		fmt.Println()
 		fmt.Printf("\t--ipv6\t\t %s\n", "Specify to start server in IPv4 or IPv6 mode")
 	}
