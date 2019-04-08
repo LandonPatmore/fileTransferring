@@ -14,17 +14,16 @@ func ErrorValidation(err error) {
 	}
 }
 
-func BlockNumberChecker(block1 [] byte, block2 [] byte) bool {
-	if len(block1) == len(block2) {
-		for index, v := range block1 {
-			if v != block2[index] {
+// Checks block numbers for length and value equality
+func BlockNumberChecker(receivedBlock [] byte, expectedBlock [] byte) bool {
+	if len(receivedBlock) == len(expectedBlock) {
+		for index, v := range receivedBlock {
+			if v != expectedBlock[index] {
 				return false
 			}
 		}
-
 		return true
 	}
-
 	return false
 }
 
@@ -50,7 +49,7 @@ func GetCMDArgs(args [] string, isClient bool) (bool, bool, bool) {
 					slidingWindow = true
 					break
 				case "--dp":
-					builder.WriteString(" Drop Packets Simulation |")
+					builder.WriteString(" Drop Packets |")
 					dropPackets = true
 					break
 				case "-h":
@@ -80,11 +79,11 @@ func GetCMDArgs(args [] string, isClient bool) (bool, bool, bool) {
 			}
 		}
 
-		strippedVersion := builder.String()[:len(builder.String())-1]
+		strippedVersion := builder.String()[:len(builder.String())-1] // just to cleans up output, removing last |
 		fmt.Println(strippedVersion)
 	} else {
 		if isClient {
-			fmt.Println("Default Options: IPv4 Mode | Sequential Acks Mode | No Drop Packets Simulation")
+			fmt.Println("Default Options: IPv4 | Sequential Mode | Normal Operation")
 		} else {
 			fmt.Println("Default Option: IPv4 Mode")
 		}
@@ -97,12 +96,12 @@ func showHelp(isClient bool) {
 	if isClient {
 		fmt.Println("usage: ./Client [<options>]")
 		fmt.Println()
-		fmt.Printf("\t--ipv6\t\t %s\n", "Specify to start client in IPv4 or IPv6 mode")
-		fmt.Printf("\t--sw\t\t %s\n", "Specify use of TCP-style sliding windows rather than the sequential acks used in TFTP")
-		fmt.Printf("\t--dp\t\t %s\n\n", "Pretend to drop 1% of packets")
+		fmt.Printf("\t--ipv6\t\t %s\n", "IPv6 mode")
+		fmt.Printf("\t--sw\t\t %s\n", "TCP-style sliding window sending algorithm")
+		fmt.Printf("\t--dp\t\t %s\n\n", "Drop 1% of packets")
 	} else {
 		fmt.Println("usage: ./Server [<options>]")
 		fmt.Println()
-		fmt.Printf("\t--ipv6\t\t %s\n", "Specify to start server in IPv4 or IPv6 mode")
+		fmt.Printf("\t--ipv6\t\t %s\n", "IPv6 mode")
 	}
 }

@@ -28,19 +28,21 @@ var packetsToDrop [] int
 var ipv6, sw, dp = shared.GetCMDArgs(os.Args, true)
 
 func main() {
-	var serverAddress string
+	rand.Seed(time.Now().UTC().UnixNano())
 
-	fmt.Print("Server address: ")
-	_, _ = fmt.Scanf("%s", &serverAddress)
+	var serverAddress string = "127.0.0.1"
+
+	//fmt.Print("Server address: ")
+	//_, _ = fmt.Scanf("%s", &serverAddress)
 
 	remoteAddr, err := net.ResolveUDPAddr("udp", serverAddress+shared.PORT)
 	shared.ErrorValidation(err)
 	conn, connError := net.DialUDP("udp", nil, remoteAddr)
 	shared.ErrorValidation(connError)
 
-	var filePath string
-	fmt.Print("Enter full file path: ")
-	_, _ = fmt.Scanf("%s", &filePath)
+	var filePath string = "/Users/landon/Downloads/22084916.jpeg"
+	//fmt.Print("Enter full file path: ")
+	//_, _ = fmt.Scanf("%s", &filePath)
 	zipError := zipFiles(filePath)
 	shared.ErrorValidation(zipError)
 
@@ -71,18 +73,28 @@ func main() {
 
 // Sends a file to the server
 func sendFile(conn *net.UDPConn, fileBytes [] byte) {
-	var currentPacket int
-	var bytesToSend = fileBytes
-
-	for {
-		if len(bytesToSend) >= 512 {
-			sendDataPacket(conn, bytesToSend[:512], &currentPacket)
-			bytesToSend = bytesToSend[512:]
-		} else {
-			sendDataPacket(conn, bytesToSend, &currentPacket)
-			err := os.Remove(tempZipName)
+	if sw {
+		err := slidingWindowSend(conn, fileBytes)
+		if err != nil {
 			shared.ErrorValidation(err)
-			break
+			return
+		}
+		err = os.Remove(tempZipName)
+		shared.ErrorValidation(err)
+	} else {
+		var currentPacket int
+		var bytesToSend = fileBytes
+
+		for {
+			if len(bytesToSend) >= 512 {
+				sendDataPacket(conn, bytesToSend[:512], &currentPacket)
+				bytesToSend = bytesToSend[512:]
+			} else {
+				sendDataPacket(conn, bytesToSend, &currentPacket)
+				err := os.Remove(tempZipName)
+				shared.ErrorValidation(err)
+				break
+			}
 		}
 	}
 }
@@ -104,7 +116,7 @@ func sendDataPacket(conn *net.UDPConn, data [] byte, currentPacket *int) {
 }
 
 // Receives a packet and does something with it based on the opcode
-func readPacket(data [] byte, blockNumber [] byte) error {
+func readSequentialPacket(data [] byte, blockNumber [] byte) error {
 	opcode := data[1]
 
 	switch opcode {
@@ -139,9 +151,9 @@ func send(conn *net.UDPConn, data []byte, blockNumber [] byte) {
 		if !shouldDropPacket() {
 			_, _ = conn.Write(data)
 		}
-		receivedData, err := handleReadTimeout(conn)
+		receivedData, err := receiveSequentialPacket(conn)
 		if err == nil {
-			err := readPacket(receivedData, blockNumber)
+			err := readSequentialPacket(receivedData, blockNumber)
 			shared.ErrorValidation(err)
 			return
 		} else {
@@ -154,8 +166,100 @@ func send(conn *net.UDPConn, data []byte, blockNumber [] byte) {
 	shared.ErrorValidation(errors.New("Total retries exhausted...exiting"))
 }
 
+func slidingWindowSend(conn *net.UDPConn, data []byte) error {
+	var bytesToSend = data
+	var dataPackets [] shared.DataPacket
+
+	var currentPacket int
+
+	for {
+		if len(bytesToSend) >= 512 {
+			dataPacket := shared.CreateDataPacket(createBlockNumber(&currentPacket), data)
+			dataPackets = append(dataPackets, *dataPacket)
+			bytesToSend = bytesToSend[512:]
+		} else {
+			dataPacket := shared.CreateDataPacket(createBlockNumber(&currentPacket), data)
+			dataPackets = append(dataPackets, *dataPacket)
+			break
+		}
+	}
+
+	var currentStart = 0
+	var currentEnd = 4
+	var windowSize = 4
+	var reachedEnd = false
+
+	for {
+		var expectedBlockNumber [] byte
+		for i := currentStart; i < currentEnd; i++ {
+			if i == len(dataPackets) { // reached the end
+				reachedEnd = true
+				break
+			}
+			_, _ = conn.Write(dataPackets[i].ByteArray())
+			expectedBlockNumber = dataPackets[i].BlockNumber
+		}
+
+		sendSuccessful, lastBlockNumberReceived, err := receiveSlidingWindowPacket(conn, expectedBlockNumber)
+		shared.ErrorValidation(err)
+
+		if sendSuccessful {
+			// can increase window size
+			windowSize *= 2
+			currentStart = currentEnd
+		} else {
+			if reachedEnd {
+				if shared.BlockNumberChecker(lastBlockNumberReceived, expectedBlockNumber) {
+					fmt.Println("Done sending file...")
+					return nil
+				}
+			}
+			// cannot increase window size, must shrink window and start from missed packet
+			windowSize /= 2
+			for i := currentStart; i < currentEnd; i++ {
+				if shared.BlockNumberChecker(lastBlockNumberReceived, dataPackets[i].BlockNumber) {
+					currentStart = i
+					break
+				}
+			}
+		}
+
+		currentEnd = currentStart + windowSize
+
+	}
+}
+
+func readSlidingWindowPacket(data [] byte, blockNumber [] byte) (sendSuccessful bool, lastBlockNumberReceived [] byte, err error) {
+	opcode := data[1]
+
+	switch opcode {
+	case 4: // ack packet
+		ack, _ := shared.ReadACKPacket(data)
+		if shared.BlockNumberChecker(ack.BlockNumber, blockNumber) {
+			return true, nil, nil
+		}
+		return false, ack.BlockNumber, nil
+	case 5:
+		e, _ := shared.ReadErrorPacket(data)
+		return false, nil, errors.New(fmt.Sprintf("Error code: %d\nError Message: %s", e.ErrorCode[1], e.ErrorMessage))
+	default:
+		return false, nil, errors.New(fmt.Sprintf("Client can only read Opcodes of 4 and 5...not: %d", opcode))
+	}
+}
+
+func receiveSlidingWindowPacket(conn *net.UDPConn, blockNumber [] byte) (bool, [] byte, error) {
+	receivedData := make([]byte, 516)
+	bytesReceived, _, err := conn.ReadFromUDP(receivedData)
+
+	if err != nil {
+		shared.ErrorValidation(err)
+	}
+
+	return readSlidingWindowPacket(receivedData[:bytesReceived], blockNumber)
+}
+
 // Handles the read timeout of the server sending back an ACK
-func handleReadTimeout(conn *net.UDPConn) ([] byte, error) {
+func receiveSequentialPacket(conn *net.UDPConn) ([] byte, error) {
 	_ = conn.SetReadDeadline(time.Now().Add(time.Millisecond * 500))
 
 	receivedData := make([]byte, 516)
@@ -250,7 +354,7 @@ func zipFiles(path string) error {
 func generateTempZipName() {
 	bytes := make([]byte, 10)
 	for i := 0; i < 10; i++ {
-		bytes[i] = byte(65 + rand.Intn(25))  //A=65 and Z = 65+25
+		bytes[i] = byte(65 + rand.Intn(25)) //A=65 and Z = 65+25
 	}
 
 	tempZipName = string(bytes) + ".zip"
