@@ -12,6 +12,16 @@ import (
 
 var filename string // this server will only handle one connection at a time, so we just set this variable each time a new WRQ packet comes int
 
+// Sliding window data
+var sw bool
+var lastSeenBlockNumber = [] byte{0, 0}
+var currentWindowSize = 0
+var windowSize = 1
+var packetLost bool
+var finishedTransferring bool
+
+const MaxWindowSize = shared.MaxWindowSize
+
 func main() {
 	ServerAddr, err := net.ResolveUDPAddr("udp", shared.PORT)
 	shared.ErrorValidation(err)
@@ -25,8 +35,107 @@ func main() {
 	displayExternalIP()
 
 	for {
-		readPacket(conn)
+		if sw {
+			readSlidingWindow(conn)
+		} else {
+			readPacket(conn)
+		}
 	}
+}
+
+func readSlidingWindow(conn *net.UDPConn) {
+	data := make([]byte, 516)
+
+	amountOfBytes, addr, err := conn.ReadFromUDP(data)
+
+	if err != nil {
+		fmt.Println("Timed out...")
+		//if !packetLost { // just drop the packets that come in after the packetLost and we don't infinitely decrease window size and tell the client
+		//	packetLost = true
+		currentWindowSize = 0
+		windowSize /= 2
+		if windowSize == 0 {
+			windowSize = 1
+		}
+		fmt.Printf("Window size decrease to...%d\n", windowSize)
+		ack := shared.CreateACKPacket()
+		ack.BlockNumber = lastSeenBlockNumber
+		sendPacketToClient(conn, addr, ack.ByteArray())
+		return
+		//}
+	}
+	data = data[:amountOfBytes]
+
+	switch data[1] { // check the opcode of the packet
+	case 3:
+		d, _ := shared.ReadDataPacket(data)
+
+		validWindow := checkSequentialBlockNumbers(lastSeenBlockNumber, d.BlockNumber)
+		if validWindow {
+			if packetLost {
+				packetLost = false
+			}
+			lastSeenBlockNumber = d.BlockNumber
+			currentWindowSize++
+			_, _ = writeToFile(filename, d.Data)
+			if currentWindowSize == windowSize {
+				currentWindowSize = 0
+				windowSize++
+				if windowSize > MaxWindowSize {
+					windowSize = MaxWindowSize
+				} else {
+					fmt.Printf("Window size increase to...%d\n", windowSize)
+				}
+				ack := shared.CreateACKPacket()
+				ack.BlockNumber = lastSeenBlockNumber
+				sendPacketToClient(conn, addr, ack.ByteArray())
+			}
+
+			if checkEndOfTransfer(d.Data) {
+				_, _ = writeToFile(filename, d.Data)
+				ack := shared.CreateACKPacket()
+				ack.BlockNumber = lastSeenBlockNumber
+				sendPacketToClient(conn, addr, ack.ByteArray())
+				os.Exit(0)
+			}
+		} else {
+			fmt.Printf("Last Seen: %v, Received: %v\n", lastSeenBlockNumber, d.BlockNumber)
+			if !packetLost { // just drop the packets that come in after the packetLost and we don't infinitely decrease window size and tell the client
+				packetLost = true
+				currentWindowSize = 0
+				windowSize /= 2
+				if windowSize == 0 {
+					windowSize = 1
+				}
+				fmt.Printf("Window size decrease to...%d\n", windowSize)
+				ack := shared.CreateACKPacket()
+				ack.BlockNumber = lastSeenBlockNumber
+				sendPacketToClient(conn, addr, ack.ByteArray())
+				break
+			}
+		}
+
+	default:
+		sendPacketToClient(conn, addr, createErrorPacket(shared.Error0, fmt.Sprintf("Sliding window mode only supports Opcode 3...not: %d", data[1])))
+	}
+}
+
+func checkSequentialBlockNumbers(lastSeen [] byte, receivedBlockNumber [] byte) bool {
+	if lastSeen[0] == receivedBlockNumber[0] { // leading bytes are the same, now we need to check trailing
+		if lastSeen[1]+1 == receivedBlockNumber[1] {
+			return true
+		}
+	} else { // leading bytes are different, need to check them now
+		if lastSeen[0]+1 == receivedBlockNumber[0] {
+			if lastSeen[1]+1 == receivedBlockNumber[1] { // TODO: Probably a better way to do this
+				return true
+			}
+			return false
+		}
+		return false
+	}
+
+	return false
 }
 
 // Reads the incoming packet and performs operations based on the packet received
@@ -42,15 +151,20 @@ func readPacket(conn *net.UDPConn) {
 	case 2:
 		fmt.Println("WRQ packet has been received...")
 		w, _ := shared.ReadRRQWRQPacket(data)
-
 		filename = w.Filename
 
-		//if !ack.IsOACK { // TODO: Need to be able to determine if the WRQ has options attached
+		if w.Options != nil {
+			ack.IsOACK = true
+			ack.Opcode = [] byte{0, 6}
+			ack.Options = parseOptions(w.Options)
+		}
+
+		if !ack.IsOACK {
 			if strings.ToLower(w.Mode) != "octet" {
 				sendPacketToClient(conn, addr, createErrorPacket(shared.Error0, "This server only supports octet mode, not: "+w.Mode))
 				return
 			}
-		//}
+		}
 
 		errorPacket, hasError := checkFileExists(filename)
 
@@ -75,6 +189,10 @@ func readPacket(conn *net.UDPConn) {
 	}
 
 	sendPacketToClient(conn, addr, ack.ByteArray())
+
+	if finishedTransferring {
+		os.Exit(0)
+	}
 }
 
 // Sends the packet to the client
@@ -82,7 +200,7 @@ func sendPacketToClient(conn *net.UDPConn, addr *net.UDPAddr, data [] byte) {
 	_, _ = conn.WriteToUDP(data, addr)
 }
 
-// Checks if a file exists and returns an error if so
+// Checks if a file exists and returns an packetLost if so
 func checkFileExists(fileName string) (ePacket [] byte, hasError bool) {
 	_, err := os.Stat(fileName)
 
@@ -93,7 +211,7 @@ func checkFileExists(fileName string) (ePacket [] byte, hasError bool) {
 	return createErrorPacket(shared.Error6, shared.Error6Message), true
 }
 
-// Writes to a file and returns an error if it cannot write to that specific file
+// Writes to a file and returns an packetLost if it cannot write to that specific file
 func writeToFile(fileName string, data []byte) (eData [] byte, hasError bool) {
 	f, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 
@@ -111,13 +229,17 @@ func writeToFile(fileName string, data []byte) (eData [] byte, hasError bool) {
 }
 
 // Checks the end of the file transfer based on the data portion of the packet
-func checkEndOfTransfer(data [] byte) {
+func checkEndOfTransfer(data [] byte) bool {
 	if len(data) < 512 { // although the packet is 516, 512 is the max for the data portion...anything smaller and we know it is the end of the file
 		fmt.Println("File has been fully transferred")
+		finishedTransferring = true
+		return true
 	}
+
+	return false
 }
 
-// Helper to create an error packet
+// Helper to create an packetLost packet
 func createErrorPacket(errorCode [] byte, errorMessage string) [] byte {
 	ePacket := shared.CreateErrorPacket(errorCode, errorMessage)
 	return ePacket.ByteArray()
@@ -134,4 +256,16 @@ func displayExternalIP() {
 	shared.ErrorValidation(err)
 	bodyString := string(bodyBytes)
 	fmt.Println("External IP: " + bodyString)
+}
+
+func parseOptions(oackPacketOptions map[string]string) map[string]string {
+	var supportedOptions = make(map[string]string)
+
+	if oackPacketOptions["sendingMode"] == "" {
+		return nil
+	}
+	supportedOptions["sendingMode"] = oackPacketOptions["sendingMode"]
+	sw = true
+
+	return supportedOptions
 }

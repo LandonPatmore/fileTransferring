@@ -11,10 +11,9 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
-
-const SendZipName = "receivedFiles.zip"
 
 var tempZipName string
 
@@ -23,7 +22,8 @@ var totalBytesSent int64
 var totalPacketsSent int
 var totalPacketsToSend int
 var packetsLost int
-var packetsToDrop [] int
+
+const MaxWindowSize = shared.MaxWindowSize
 
 var ipv6, sw, dp = shared.GetCMDArgs(os.Args, true)
 
@@ -40,7 +40,7 @@ func main() {
 	conn, connError := net.DialUDP("udp", nil, remoteAddr)
 	shared.ErrorValidation(connError)
 
-	var filePath string = "/Users/landon/Downloads/22084916.jpeg"
+	var filePath string = "/Users/landon/Downloads/dd-wrt.v24-37305_NEWD-2_K3.x_mega.bin"
 	//fmt.Print("Enter full file path: ")
 	//_, _ = fmt.Scanf("%s", &filePath)
 	zipError := zipFiles(filePath)
@@ -62,11 +62,8 @@ func main() {
 
 	totalPacketsToSend = determineAmountOfPacketsToSend(fileSize)
 
-	if dp {
-		determinePacketsToDrop()
-	}
-
-	sendWRQPacket(conn, SendZipName, nil) // TODO: Change this to work with new way for options
+	fmt.Println(totalPacketsToSend)
+	sendWRQPacket(conn, strings.Split(filepath.Base(filePath), ".")[0] + ".zip")
 
 	sendFile(conn, fileBytes)
 }
@@ -100,8 +97,17 @@ func sendFile(conn *net.UDPConn, fileBytes [] byte) {
 }
 
 // Creates and sends a WRQ packet
-func sendWRQPacket(conn *net.UDPConn, fileName string, options map[string]string) {
-	wPacket := shared.CreateRRQWRQPacket(false, fileName, options)
+func sendWRQPacket(conn *net.UDPConn, fileName string) {
+	var wPacket *shared.RRQWRQPacket
+
+	if sw {
+		options := map[string]string{
+			"sendingMode": "slidingWindow",
+		}
+		wPacket = shared.CreateRRQWRQPacket(false, fileName, options)
+	} else {
+		wPacket = shared.CreateRRQWRQPacket(false, fileName, nil)
+	}
 	send(conn, wPacket.ByteArray(), []byte{0, 0})
 }
 
@@ -131,7 +137,11 @@ func readSequentialPacket(data [] byte, blockNumber [] byte) error {
 		return errors.New(fmt.Sprintf("Error code: %d\nError Message: %s", e.ErrorCode[1], e.ErrorMessage))
 	case 6:
 		oack, _ := shared.ReadOACKPacket(data)
-		fmt.Println(oack)
+		if oack.Options["sendingMode"] == "slidingWindow" { // just simulating if there were other options, to set the client to what the server wants...there is only one option for this specific project
+			sw = true
+		} else {
+			sw = false
+		}
 		return nil
 	default:
 		return errors.New(fmt.Sprintf("Client can only read Opcodes of 4, 5, and 6...not: %d", opcode))
@@ -174,58 +184,63 @@ func slidingWindowSend(conn *net.UDPConn, data []byte) error {
 
 	for {
 		if len(bytesToSend) >= 512 {
-			dataPacket := shared.CreateDataPacket(createBlockNumber(&currentPacket), data)
+			dataPacket := shared.CreateDataPacket(createBlockNumber(&currentPacket), bytesToSend[:512])
 			dataPackets = append(dataPackets, *dataPacket)
 			bytesToSend = bytesToSend[512:]
 		} else {
-			dataPacket := shared.CreateDataPacket(createBlockNumber(&currentPacket), data)
+			dataPacket := shared.CreateDataPacket(createBlockNumber(&currentPacket), bytesToSend[:])
 			dataPackets = append(dataPackets, *dataPacket)
 			break
 		}
 	}
 
+	var windowSize = 1
 	var currentStart = 0
-	var currentEnd = 4
-	var windowSize = 4
-	var reachedEnd = false
+	var currentEnd = 1
+	var reachedEnd bool
 
 	for {
 		var expectedBlockNumber [] byte
 		for i := currentStart; i < currentEnd; i++ {
-			if i == len(dataPackets) { // reached the end
+			fmt.Printf("Sent packet...%d\n", i)
+			dataPacket := dataPackets[i]
+			_, _ = conn.Write(dataPacket.ByteArray())
+			expectedBlockNumber = dataPacket.BlockNumber
+			if i == len(dataPackets)-1 {
 				reachedEnd = true
 				break
 			}
-			_, _ = conn.Write(dataPackets[i].ByteArray())
-			expectedBlockNumber = dataPackets[i].BlockNumber
 		}
 
 		sendSuccessful, lastBlockNumberReceived, err := receiveSlidingWindowPacket(conn, expectedBlockNumber)
 		shared.ErrorValidation(err)
 
 		if sendSuccessful {
-			// can increase window size
-			windowSize *= 2
-			currentStart = currentEnd
-		} else {
 			if reachedEnd {
-				if shared.BlockNumberChecker(lastBlockNumberReceived, expectedBlockNumber) {
-					fmt.Println("Done sending file...")
-					return nil
-				}
+				fmt.Println("Done sending file")
+				return nil
 			}
-			// cannot increase window size, must shrink window and start from missed packet
-			windowSize /= 2
+			currentStart += windowSize
+			windowSize++ // increase window size by 1 each time (slow start)
+			if windowSize > MaxWindowSize {
+				windowSize = MaxWindowSize
+			}
+		} else {
+			fmt.Println("Decreasing window size...")
+			windowSize /= 2 // exponentially decrease
+			if windowSize == 0 {
+				windowSize = 1
+			}
+
 			for i := currentStart; i < currentEnd; i++ {
 				if shared.BlockNumberChecker(lastBlockNumberReceived, dataPackets[i].BlockNumber) {
-					currentStart = i
+					currentStart = i + 1
 					break
 				}
 			}
 		}
 
 		currentEnd = currentStart + windowSize
-
 	}
 }
 
@@ -260,7 +275,7 @@ func receiveSlidingWindowPacket(conn *net.UDPConn, blockNumber [] byte) (bool, [
 
 // Handles the read timeout of the server sending back an ACK
 func receiveSequentialPacket(conn *net.UDPConn) ([] byte, error) {
-	_ = conn.SetReadDeadline(time.Now().Add(time.Millisecond * 500))
+	//_ = conn.SetReadDeadline(time.Now().Add(time.Millisecond * 500))
 
 	receivedData := make([]byte, 516)
 	bytesReceived, _, timedOut := conn.ReadFromUDP(receivedData)
@@ -282,41 +297,10 @@ func determineAmountOfPacketsToSend(fileSize int64) int { // yes the last packet
 	return int(math.Ceil(float64(fileSize) / 512))
 }
 
-// Randomly choose which packets to drop
-func determinePacketsToDrop() {
-	var onePercentOfPacketsToDrop = int(math.Ceil(float64(totalPacketsToSend) * 0.01))
-
-	for {
-		if len(packetsToDrop) < onePercentOfPacketsToDrop {
-			duplicate := false
-			packetToDrop := rand.Intn(totalPacketsToSend)
-
-			for _, packetNumber := range packetsToDrop {
-				if packetToDrop == packetNumber {
-					duplicate = true
-					break
-				}
-			}
-
-			if !duplicate {
-				packetsToDrop = append(packetsToDrop, packetToDrop)
-			}
-		} else {
-			fmt.Println("Packets to drop have been determined...")
-			break
-		}
-	}
-}
-
 // Figures out whether or not to drop the current packet
 func shouldDropPacket() bool {
 	if dp {
-		for index, packetToDrop := range packetsToDrop {
-			if totalPacketsSent == packetToDrop {
-				packetsToDrop = append(packetsToDrop[:index], packetsToDrop[index+1:]...)
-				return true
-			}
-		}
+		return rand.Float64() <= 0.01
 	}
 
 	return false

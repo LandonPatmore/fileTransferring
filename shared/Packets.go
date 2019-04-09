@@ -169,25 +169,29 @@ func ReadRRQWRQPacket(data []byte) (p *RRQWRQPacket, err error) {
 		}
 	}
 
-	packet.Filename = string(packetBytes[0].Bytes)
-	packet.Mode = string(packetBytes[1].Bytes)
+	if packetBytes != nil {
+		packet.Filename = string(packetBytes[0].Bytes)
+		packet.Mode = string(packetBytes[1].Bytes)
 
-	if len(packetBytes) > 2 { // we now know its an option packet
-		var options = packetBytes[2:]
-		var optionsMapping = make(map[string]string)
-		if len(options)%2 == 0 {
-			for i := 0; i <= len(options)-2; i += 2 { // loop over and map the keys to values of the options
-				optionsMapping[string(options[i].Bytes)] = string(options[i+1].Bytes)
+		if len(packetBytes) > 2 { // we now know its an option packet
+			var options= packetBytes[2:]
+			var optionsMapping= make(map[string]string)
+			if len(options)%2 == 0 {
+				for i := 0; i <= len(options)-2; i += 2 { // loop over and map the keys to values of the options
+					optionsMapping[string(options[i].Bytes)] = string(options[i+1].Bytes)
+				}
+
+				packet.Options = optionsMapping
+
+				return &packet, nil
 			}
-
-			packet.Options = optionsMapping
-
-			return &packet, nil
+			return nil, errors.New("Options are missing values")
 		}
-		return nil, errors.New("Options are missing values")
+
+		return &packet, nil
 	}
 
-	return &packet, nil
+	return nil, errors.New("Error parsing the packet...")
 }
 
 // Reads a data array and returns a Data packet with a possible error as well
