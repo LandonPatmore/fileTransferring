@@ -289,7 +289,7 @@ func send(conn *net.UDPConn, data []byte, blockNumber [] byte) {
 		} else {
 			packetsLost++
 			displayProgress()
-			time.Sleep(time.Millisecond * 500)
+			time.Sleep(time.Millisecond * 100)
 		}
 	}
 

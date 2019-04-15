@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>File Transerrfing Throughput Results</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <script>
+        // These dataPoints are in Mb/sec, but converted them to Kb/sec
+        // because it was easier to show the differences
+        var data = [
+            {
+                title: "Ipv4 vs. Ipv6 (Seq)",
+                dataSet1: {
+                    label: "Ipv4",
+                    dataPoints: [
+                        0.125938,
+                        0.102769,
+                        0.095476,
+                        0.120648,
+                        0.092429
+                    ]
+                },
+                dataSet2: {
+                    label: "Ipv6",
+                    dataPoints: [
+                        0.118473,
+                        0.134637,
+                        0.102875,
+                        0.093757,
+                        0.123339
+                    ]
+                }
+            },
+            {
+                title: "Non-Drop vs. Drop (Seq)",
+                dataSet1: {
+                    label: "Non-Drop",
+                    dataPoints: [
+                        0.125938,
+                        0.102769,
+                        0.095476,
+                        0.120648,
+                        0.092429
+                    ]
+                },
+                dataSet2: {
+                    label: "Drop",
+                    dataPoints: [
+                        0.072400,
+                        0.072418,
+                        0.070759,
+                        0.068391,
+                        0.066998
+                    ]
+                }
+            },
+            {
+                title: "Sequential vs. Sliding Window",
+                dataSet1: {
+                    label: "Sequential",
+                    dataPoints: [
+                        0.125938,
+                        0.102769,
+                        0.095476,
+                        0.120648,
+                        0.092429
+                    ]
+                },
+                dataSet2: {
+                    label: "Sliding Window",
+                    dataPoints: [
+                        0.074431,
+                        0.063598,
+                        0.072620,
+                        0.104334,
+                        0.071749
+                    ]
+                }
+            }
+        ]
+
+        window.onload = function () {
+            data.forEach((chart) => {
+                createChart(chart)
+            })
+        }
+
+        function createChart(chart) {
+            $("body").append('<div id="' + chart.title + '" style="height: 300px; width: 100%;"></div>');
+            var data1 = createDataPoints(chart.dataSet1)
+            var data2 = createDataPoints(chart.dataSet2)
+
+            var dataPoints = [data1, data2]
+
+            var chart = new CanvasJS.Chart(chart.title, {
+                animationEnabled: true,
+                theme: "light2",
+                title: {
+                    text: chart.title + " | 5 data point Average"
+                },
+                axisY: {
+                    title: "Kb/sec"
+                },
+                axisX: {
+                    title: "Type"
+                },
+                data: [{
+                    type: "column",
+                    dataPoints: dataPoints
+                }]
+            });
+
+            chart.render();
+        }
+
+        function createDataPoints(dataSet) {
+            const reducer = (accumulator, currentValue) => accumulator + currentValue;
+            const average = dataSet.dataPoints.reduce(reducer) / dataSet.dataPoints.length
+
+            return { label: dataSet.label, y: average * 125 }
+        }
+    </script>
+</head>
+
+<body>
+    <script src="https://canvasjs.com/assets/script/jquery-1.11.1.min.js"></script>
+    <script src="https://canvasjs.com/assets/script/canvasjs.min.js"></script>
+</body>
+
+</html>
