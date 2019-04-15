@@ -26,7 +26,15 @@ const MaxWindowSize = shared.MaxWindowSize
 var ipv6, _, _ = shared.GetCMDArgs(os.Args, false)
 
 func main() {
-	ServerAddr, err := net.ResolveUDPAddr("udp", shared.PORT)
+	var ServerAddr *net.UDPAddr
+	var err error
+
+	if ipv6 {
+		ServerAddr, err = net.ResolveUDPAddr("udp6", shared.PORT)
+	} else {
+		ServerAddr, err = net.ResolveUDPAddr("udp4", shared.PORT)
+	}
+
 	shared.ErrorValidation(err)
 	conn, err := net.ListenUDP("udp", ServerAddr)
 	shared.ErrorValidation(err)

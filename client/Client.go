@@ -35,10 +35,20 @@ func main() {
 	fmt.Print("Server address: ")
 	_, _ = fmt.Scanf("%s", &serverAddress)
 
-	remoteAddr, err := net.ResolveUDPAddr("udp", serverAddress+shared.PORT)
-	shared.ErrorValidation(err)
-	conn, connError := net.DialUDP("udp", nil, remoteAddr)
-	shared.ErrorValidation(connError)
+	var conn *net.UDPConn
+	var connError error
+
+	if ipv6 {
+		remoteAddr, err := net.ResolveUDPAddr("udp6", serverAddress+shared.PORT)
+		shared.ErrorValidation(err)
+		conn, connError = net.DialUDP("udp6", nil, remoteAddr)
+		shared.ErrorValidation(connError)
+	} else {
+		remoteAddr, err := net.ResolveUDPAddr("udp4", serverAddress+shared.PORT)
+		shared.ErrorValidation(err)
+		conn, connError = net.DialUDP("udp4", nil, remoteAddr)
+		shared.ErrorValidation(connError)
+	}
 
 	var filePath string
 	fmt.Print("Enter full file path: ")
