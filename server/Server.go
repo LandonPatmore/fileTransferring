@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 var filename string // this server will only handle one connection at a time, so we just set this variable each time a new WRQ packet comes int
@@ -15,12 +16,14 @@ var filename string // this server will only handle one connection at a time, so
 // Sliding window data
 var sw bool
 var lastSeenBlockNumber = [] byte{0, 0}
-var currentWindowSize = 0
+var amountOfPacketsInWindow = 0
 var windowSize = 1
-var packetLost bool
 var finishedTransferring bool
+var addrOfReceiver *net.UDPAddr
 
 const MaxWindowSize = shared.MaxWindowSize
+
+var ipv6, _, _ = shared.GetCMDArgs(os.Args, false)
 
 func main() {
 	ServerAddr, err := net.ResolveUDPAddr("udp", shared.PORT)
@@ -46,13 +49,12 @@ func main() {
 func readSlidingWindow(conn *net.UDPConn) {
 	data := make([]byte, 516)
 
+	_ = conn.SetReadDeadline(time.Now().Add(time.Second * 5))
 	amountOfBytes, addr, err := conn.ReadFromUDP(data)
 
 	if err != nil {
 		fmt.Println("Timed out...")
-		//if !packetLost { // just drop the packets that come in after the packetLost and we don't infinitely decrease window size and tell the client
-		//	packetLost = true
-		currentWindowSize = 0
+		amountOfPacketsInWindow = 0
 		windowSize /= 2
 		if windowSize == 0 {
 			windowSize = 1
@@ -60,10 +62,11 @@ func readSlidingWindow(conn *net.UDPConn) {
 		fmt.Printf("Window size decrease to...%d\n", windowSize)
 		ack := shared.CreateACKPacket()
 		ack.BlockNumber = lastSeenBlockNumber
-		sendPacketToClient(conn, addr, ack.ByteArray())
+		sendPacketToClient(conn, addrOfReceiver, ack.ByteArray())
+
 		return
-		//}
 	}
+
 	data = data[:amountOfBytes]
 
 	switch data[1] { // check the opcode of the packet
@@ -71,21 +74,20 @@ func readSlidingWindow(conn *net.UDPConn) {
 		d, _ := shared.ReadDataPacket(data)
 
 		validWindow := checkSequentialBlockNumbers(lastSeenBlockNumber, d.BlockNumber)
-		if validWindow {
-			if packetLost {
-				packetLost = false
-			}
+
+		if validWindow { // packet is in order
 			lastSeenBlockNumber = d.BlockNumber
-			currentWindowSize++
+			amountOfPacketsInWindow++
 			_, _ = writeToFile(filename, d.Data)
-			if currentWindowSize == windowSize {
-				currentWindowSize = 0
+			if amountOfPacketsInWindow == windowSize {
+				amountOfPacketsInWindow = 0
 				windowSize++
 				if windowSize > MaxWindowSize {
 					windowSize = MaxWindowSize
-				} else {
-					fmt.Printf("Window size increase to...%d\n", windowSize)
 				}
+
+				fmt.Printf("Window size increase to...%d\n", windowSize)
+
 				ack := shared.CreateACKPacket()
 				ack.BlockNumber = lastSeenBlockNumber
 				sendPacketToClient(conn, addr, ack.ByteArray())
@@ -98,23 +100,22 @@ func readSlidingWindow(conn *net.UDPConn) {
 				sendPacketToClient(conn, addr, ack.ByteArray())
 				os.Exit(0)
 			}
-		} else {
-			fmt.Printf("Last Seen: %v, Received: %v\n", lastSeenBlockNumber, d.BlockNumber)
-			if !packetLost { // just drop the packets that come in after the packetLost and we don't infinitely decrease window size and tell the client
-				packetLost = true
-				currentWindowSize = 0
-				windowSize /= 2
-				if windowSize == 0 {
-					windowSize = 1
-				}
-				fmt.Printf("Window size decrease to...%d\n", windowSize)
-				ack := shared.CreateACKPacket()
-				ack.BlockNumber = lastSeenBlockNumber
-				sendPacketToClient(conn, addr, ack.ByteArray())
-				break
-			}
+		} else { // packet is not in order
+			fmt.Println("Sent packet to oblivion...")
+			//if checkBlockNumberAbove(lastSeenBlockNumber, d.BlockNumber) { // packet is above the last we have, send back an ack
+			//	amountOfPacketsInWindow = 0
+			//	windowSize /= 2
+			//	if windowSize == 0 {
+			//		windowSize = 1
+			//	}
+			//
+			//	fmt.Printf("Window size decrease to...%d\n", windowSize)
+			//
+			//	ack := shared.CreateACKPacket()
+			//	ack.BlockNumber = lastSeenBlockNumber
+			//	sendPacketToClient(conn, addr, ack.ByteArray())
+			//} // else : we just drop the packet because we already have it written to the file
 		}
-
 	default:
 		sendPacketToClient(conn, addr, createErrorPacket(shared.Error0, fmt.Sprintf("Sliding window mode only supports Opcode 3...not: %d", data[1])))
 	}
@@ -127,7 +128,7 @@ func checkSequentialBlockNumbers(lastSeen [] byte, receivedBlockNumber [] byte) 
 		}
 	} else { // leading bytes are different, need to check them now
 		if lastSeen[0]+1 == receivedBlockNumber[0] {
-			if lastSeen[1]+1 == receivedBlockNumber[1] { // TODO: Probably a better way to do this
+			if lastSeen[1]+1 == receivedBlockNumber[1] {
 				return true
 			}
 			return false
@@ -143,6 +144,7 @@ func readPacket(conn *net.UDPConn) {
 	data := make([]byte, 516)
 
 	amountOfBytes, addr, err := conn.ReadFromUDP(data)
+	addrOfReceiver = addr
 	shared.ErrorValidation(err)
 	data = data[:amountOfBytes]
 	ack := shared.CreateACKPacket()
@@ -179,6 +181,7 @@ func readPacket(conn *net.UDPConn) {
 		errorPacket, hasError := writeToFile(filename, d.Data)
 		if hasError {
 			sendPacketToClient(conn, addr, errorPacket)
+			os.Exit(0)
 			return
 		} else {
 			checkEndOfTransfer(d.Data)
