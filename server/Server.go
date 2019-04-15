@@ -57,7 +57,7 @@ func main() {
 func readSlidingWindow(conn *net.UDPConn) {
 	data := make([]byte, 516)
 
-	_ = conn.SetReadDeadline(time.Now().Add(time.Second * 5))
+	_ = conn.SetReadDeadline(time.Now().Add(time.Millisecond * 500))
 	amountOfBytes, addr, err := conn.ReadFromUDP(data)
 
 	if err != nil {

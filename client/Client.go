@@ -75,7 +75,10 @@ func main() {
 
 	sendWRQPacket(conn, strings.Split(filepath.Base(filePath), ".")[0]+".zip")
 
+	var startTime = time.Now().UnixNano() / 1e6 // get it in milliseconds
 	sendFile(conn, fileBytes)
+	var endTime = time.Now().UnixNano() / 1e6                                     // get it in milliseconds
+	fmt.Printf("Throughput: %d megabits/sec", (fileSize/(endTime-startTime))/125) // from bytes/millsecond to megabits/sec
 }
 
 // Sends a file to the server
