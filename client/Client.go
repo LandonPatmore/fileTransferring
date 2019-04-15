@@ -77,8 +77,8 @@ func main() {
 
 	var startTime = time.Now().UnixNano() / 1e6 // get it in milliseconds
 	sendFile(conn, fileBytes)
-	var endTime = time.Now().UnixNano() / 1e6                                     // get it in milliseconds
-	fmt.Printf("Throughput: %d megabits/sec", (fileSize/(endTime-startTime))/125) // from bytes/millsecond to megabits/sec
+	var endTime = time.Now().UnixNano() / 1e6                                                     // get it in milliseconds
+	fmt.Printf("Throughput: %f megabits/sec", (float64(fileSize)/float64(endTime-startTime))/125) // from bytes/millsecond to megabits/sec
 }
 
 // Sends a file to the server
