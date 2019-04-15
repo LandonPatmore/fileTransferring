@@ -30,19 +30,19 @@ var ipv6, sw, dp = shared.GetCMDArgs(os.Args, true)
 func main() {
 	rand.Seed(time.Now().UTC().UnixNano())
 
-	var serverAddress string = "127.0.0.1"
+	var serverAddress string
 
-	//fmt.Print("Server address: ")
-	//_, _ = fmt.Scanf("%s", &serverAddress)
+	fmt.Print("Server address: ")
+	_, _ = fmt.Scanf("%s", &serverAddress)
 
 	remoteAddr, err := net.ResolveUDPAddr("udp", serverAddress+shared.PORT)
 	shared.ErrorValidation(err)
 	conn, connError := net.DialUDP("udp", nil, remoteAddr)
 	shared.ErrorValidation(connError)
 
-	var filePath string = "/Users/landon/Downloads/22084916.jpeg"
-	//fmt.Print("Enter full file path: ")
-	//_, _ = fmt.Scanf("%s", &filePath)
+	var filePath string
+	fmt.Print("Enter full file path: ")
+	_, _ = fmt.Scanf("%s", &filePath)
 
 	fmt.Println("Buffering file...")
 	zipError := zipFiles(filePath)
