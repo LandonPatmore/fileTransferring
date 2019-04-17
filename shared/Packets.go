@@ -38,6 +38,10 @@ type ErrorPacket struct {
 	zero         byte
 }
 
+type SlidingWindowPacket struct {
+	Opcode [] byte // 07
+}
+
 // Helper so there isn't a need for a 2D array (even though it would probably be more efficient)
 type ArrayBytesHelper struct {
 	Bytes [] byte
@@ -89,6 +93,14 @@ func CreateErrorPacket(errorCode [] byte, errorMessage string) *ErrorPacket {
 	e.ErrorMessage = errorMessage
 
 	return &e
+}
+
+func CreateSlidingWindowPacket() *SlidingWindowPacket {
+	var sw SlidingWindowPacket
+
+	sw.Opcode = []byte{0, 7}
+
+	return &sw
 }
 
 // Returns a byte array of a RRQ or WRQ Packet
@@ -153,6 +165,14 @@ func (e *ErrorPacket) ByteArray() [] byte {
 	return byteArray
 }
 
+func (sw *SlidingWindowPacket) ByteArray() [] byte {
+	var byteArray []byte
+
+	byteArray = append(byteArray, sw.Opcode...)
+
+	return byteArray
+}
+
 // Reads a data array and returns an RRQ or WRQ packet with a possible error as well
 func ReadRRQWRQPacket(data []byte) (p *RRQWRQPacket, err error) {
 	packet := RRQWRQPacket{}
@@ -174,8 +194,8 @@ func ReadRRQWRQPacket(data []byte) (p *RRQWRQPacket, err error) {
 		packet.Mode = string(packetBytes[1].Bytes)
 
 		if len(packetBytes) > 2 { // we now know its an option packet
-			var options= packetBytes[2:]
-			var optionsMapping= make(map[string]string)
+			var options = packetBytes[2:]
+			var optionsMapping = make(map[string]string)
 			if len(options)%2 == 0 {
 				for i := 0; i <= len(options)-2; i += 2 { // loop over and map the keys to values of the options
 					optionsMapping[string(options[i].Bytes)] = string(options[i+1].Bytes)

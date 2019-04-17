@@ -30,10 +30,10 @@ var ipv6, sw, dp = shared.GetCMDArgs(os.Args, true)
 func main() {
 	rand.Seed(time.Now().UTC().UnixNano())
 
-	var serverAddress string
+	var serverAddress = "127.0.0.1"
 
-	fmt.Print("Server address: ")
-	_, _ = fmt.Scanf("%s", &serverAddress)
+	//fmt.Print("Server address: ")
+	//_, _ = fmt.Scanf("%s", &serverAddress)
 
 	var conn *net.UDPConn
 	var connError error
@@ -50,9 +50,9 @@ func main() {
 		shared.ErrorValidation(connError)
 	}
 
-	var filePath string
-	fmt.Print("Enter full file path: ")
-	_, _ = fmt.Scanf("%s", &filePath)
+	var filePath = "/Users/landon/Desktop/sendable.jpg"
+	//fmt.Print("Enter full file path: ")
+	//_, _ = fmt.Scanf("%s", &filePath)
 
 	fmt.Println("Buffering file...")
 	zipError := zipFiles(filePath)
@@ -129,85 +129,90 @@ func slidingWindowSend(conn *net.UDPConn, data []byte) error {
 	}
 
 	var windowSize = 1
-	var currentStart = 0
-	var currentEnd = 1
-	var reachedEnd bool
+	var windowStart = 0                      // window
+	var windowEnd = windowStart + windowSize // window
+	var currentPacketsInFlight = 0
 
 	for {
-		var lastSentBlockNumber [] byte
-
-		for i := currentStart; i < currentEnd; i++ { // this is where we move the window around
-			if !shouldDropPacket() {
-				d := dataPackets[i]
-				lastSentBlockNumber = d.BlockNumber
-				_, _ = conn.Write(d.ByteArray())
-
-				if len(d.Data) < 512 { // we know we are at the end of the file
-					reachedEnd = true
-					break
-				}
-			} else {
-				fmt.Println("Dropped packet...")
-			}
-
+		var blockNumberToReceiveToAdvanceWindow [] byte
+		if windowStart < len(dataPackets) {
+			blockNumberToReceiveToAdvanceWindow = dataPackets[windowStart].BlockNumber
+		} else {
+			blockNumberToReceiveToAdvanceWindow = dataPackets[len(dataPackets)-1].BlockNumber
 		}
 
-		sendWasSuccessful, blockNumberReceived, err := receiveSlidingWindowPacket(conn, lastSentBlockNumber)
+		for i := windowStart; i < windowEnd; i++ {
+			if currentPacketsInFlight != windowSize {
+				if !shouldDropPacket() {
+					if (windowStart + currentPacketsInFlight) < len(dataPackets) {
+						var dataPacketToSend = dataPackets[windowStart+currentPacketsInFlight]
+						_, _ = conn.Write(dataPacketToSend.ByteArray())
+						currentPacketsInFlight++
+					}
+				} else {
+					currentPacketsInFlight++
+					fmt.Println("Dropped packet...")
+				}
+			} else {
+				break
+			}
+		}
+
+		endOfTransfer, sendWasSuccessful, _, err := receiveSlidingWindowPacket(conn, blockNumberToReceiveToAdvanceWindow)
 		shared.ErrorValidation(err)
 
-		if sendWasSuccessful {
-			if reachedEnd { // we successfully sent the file
-				fmt.Println("Done sending file")
-				return nil
-			}
+		if endOfTransfer {
+			fmt.Println("File transferred fully")
+			return nil
+		}
 
-			currentStart += windowSize // first move where the window starts
-			windowSize++               // now increase window size so we don't miss any packets
+		if sendWasSuccessful {
+			windowStart += 1 // first move where the window starts
+			currentPacketsInFlight--
+
+			windowSize++
 			if windowSize > MaxWindowSize {
 				windowSize = MaxWindowSize
 			}
 
 			fmt.Printf("Window size increased to...%d\n", windowSize)
 		} else {
-			fmt.Printf("Last Received: %v, Last Sent: %v\n", blockNumberReceived, lastSentBlockNumber)
-			for i := currentStart; i < currentEnd; i++ {
-				if shared.BlockNumberChecker(blockNumberReceived, dataPackets[i].BlockNumber) { // find the block number that was sent back, as this was the last successful packet that the server got back
-					currentStart = i + 1 // +1 because that is the packet that did not get to the server
-					break
-				}
-			}
 			windowSize /= 2
-			if windowSize == 0 {
+			if windowSize <= 0 {
 				windowSize = 1
 			}
 
 			fmt.Printf("Window size decreased to...%d\n", windowSize)
+
+			currentPacketsInFlight = 0
 		}
 
-		currentEnd = currentStart + windowSize
+		windowEnd = windowStart + windowSize
 	}
 
 }
 
-func readSlidingWindowPacket(data [] byte, blockNumber [] byte) (sendSuccessful bool, blockNumberReceived [] byte, err error) {
+func readSlidingWindowPacket(data [] byte, blockNumber [] byte) (endOfTransfer bool, sendSuccessful bool, blockNumberReceived [] byte, err error) {
 	opcode := data[1]
 
 	switch opcode {
 	case 4: // ack packet
 		ack, _ := shared.ReadACKPacket(data)
 		if shared.BlockNumberChecker(ack.BlockNumber, blockNumber) {
-			return true, nil, nil
+			return false, true, nil, nil
 		}
-		return false, ack.BlockNumber, nil
+		return false, false, ack.BlockNumber, nil
 	case 5:
 		e, _ := shared.ReadErrorPacket(data)
-		return false, nil, errors.New(fmt.Sprintf("Error code: %d\nError Message: %s", e.ErrorCode[1], e.ErrorMessage))
+		return false, false, nil, errors.New(fmt.Sprintf("Error code: %d\nError Message: %s", e.ErrorCode[1], e.ErrorMessage))
+	case 7:
+		return true, false, nil, nil
 	default:
-		return false, nil, errors.New(fmt.Sprintf("Client can only read Opcodes of 4 and 5...not: %d", opcode))
+		return false, false, nil, errors.New(fmt.Sprintf("Client can only read Opcodes of 4,5, and 7 in Sliding Window Mode...not: %d", opcode))
 	}
 }
 
-func receiveSlidingWindowPacket(conn *net.UDPConn, blockNumber [] byte) (bool, [] byte, error) {
+func receiveSlidingWindowPacket(conn *net.UDPConn, blockNumber [] byte) (bool, bool, [] byte, error) {
 	receivedData := make([]byte, 516)
 
 	bytesReceived, _, err := conn.ReadFromUDP(receivedData)
@@ -279,7 +284,7 @@ func createBlockNumber(currentPacketNumber *int) [] byte {
 func send(conn *net.UDPConn, data []byte, blockNumber [] byte) {
 	for i := 0; i < 10; i++ {
 		if !shouldDropPacket() {
-			_, _ = conn.Write(data)
+		_, _ = conn.Write(data)
 		}
 		receivedData, err := receiveSequentialPacket(conn)
 		if err == nil {
