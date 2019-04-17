@@ -30,10 +30,10 @@ var ipv6, sw, dp = shared.GetCMDArgs(os.Args, true)
 func main() {
 	rand.Seed(time.Now().UTC().UnixNano())
 
-	var serverAddress = "127.0.0.1"
+	var serverAddress string
 
-	//fmt.Print("Server address: ")
-	//_, _ = fmt.Scanf("%s", &serverAddress)
+	fmt.Print("Server address: ")
+	_, _ = fmt.Scanf("%s", &serverAddress)
 
 	var conn *net.UDPConn
 	var connError error
@@ -50,9 +50,9 @@ func main() {
 		shared.ErrorValidation(connError)
 	}
 
-	var filePath = "/Users/landon/Desktop/sendable.jpg"
-	//fmt.Print("Enter full file path: ")
-	//_, _ = fmt.Scanf("%s", &filePath)
+	var filePath string
+	fmt.Print("Enter full file path: ")
+	_, _ = fmt.Scanf("%s", &filePath)
 
 	fmt.Println("Buffering file...")
 	zipError := zipFiles(filePath)
@@ -284,7 +284,7 @@ func createBlockNumber(currentPacketNumber *int) [] byte {
 func send(conn *net.UDPConn, data []byte, blockNumber [] byte) {
 	for i := 0; i < 10; i++ {
 		if !shouldDropPacket() {
-		_, _ = conn.Write(data)
+			_, _ = conn.Write(data)
 		}
 		receivedData, err := receiveSequentialPacket(conn)
 		if err == nil {
